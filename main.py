@@ -174,77 +174,89 @@ else:
             st.dataframe(df_acier, width='stretch')
 
         with tab3:
-            # Création de deux colonnes : celle de gauche prend 50% (pour le tableau), celle de droite est vide
             col_half, col_void = st.columns([1, 1])
-            
             with col_half:
                 st.subheader("Ajouter un budget")
-                
-                # --- FORMULAIRE D'AJOUT ---
                 with st.form("ajout_prev"):
-                    new_des = st.text_input("Désignation (ex: Voiles RDC)")
+                    new_des = st.text_input("Désignation générique (ex: Voiles, Dalles)")
                     new_vol = st.number_input("Volume Prévu (m3)", step=1.0)
-                    # LES BOUTONS RADIO HORIZONTAUX
                     new_zone = st.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
-                    
                     submitted = st.form_submit_button("Ajouter (+)")
-                    
                     if submitted and new_des:
                         new_row = pd.DataFrame([{"Designation": new_des, "Prevu (m3)": new_vol, "Zone": new_zone}])
                         sheets["Previsionnel"] = pd.concat([df_prev, new_row], ignore_index=True)
                         sauvegarder_excel_github(sheets, path_f, sha)
                         st.rerun()
-
                 st.divider()
-                st.write("**Modifier l'existant :**")
-                # Tableau réduit en largeur car il est dans col_half
-                df_prev_edit = st.data_editor(
-                    df_prev, 
-                    num_rows="dynamic", 
-                    key="edit_prev", 
-                    use_container_width=True
-                )
-                
-                # Bouton de sauvegarde global pour les modifications directes dans le tableau
-                if st.button("Enregistrer modifications tableau", key="save_prev_table"):
+                st.write("**Budget Existant :**")
+                df_prev_edit = st.data_editor(df_prev, num_rows="dynamic", key="edit_prev", use_container_width=True)
+                if st.button("Sauvegarder Tableau", key="save_prev_tbl"):
                     sheets["Previsionnel"] = df_prev_edit
                     sauvegarder_excel_github(sheets, path_f, sha)
-                    st.success("Tableau mis à jour !")
                     st.rerun()
 
         with tab4:
-            if not df_beton.empty or not df_prev.empty:
+            st.subheader("Bilan consolidé par Famille")
+            if not df_prev.empty:
+                # 1. On prépare les données réelles
                 df_calc = df_beton.copy()
-                df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce')
-                recap_reel = df_calc.groupby("Designation")["Volume (m3)"].sum().reset_index()
+                df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce').fillna(0)
                 
-                df_prev["Prevu (m3)"] = pd.to_numeric(df_prev["Prevu (m3)"], errors='coerce')
+                # 2. On prépare le prévisionnel
+                df_target = df_prev.copy()
+                df_target["Prevu (m3)"] = pd.to_numeric(df_target["Prevu (m3)"], errors='coerce').fillna(0)
                 
-                df_merged = pd.merge(recap_reel, df_prev, on="Designation", how="outer").fillna(0)
+                # 3. ALGORITHME DE REGROUPEMENT INTELLIGENT
+                # On crée une nouvelle colonne 'Volume Reel' dans le tableau prévisionnel
+                df_target["Volume Reel"] = 0.0
                 
-                if "Zone" in df_merged.columns:
-                    df_merged["Zone"] = df_merged["Zone"].replace(0, "Indéfini")
-                else:
-                    df_merged["Zone"] = "Indéfini"
-
+                # Pour chaque ligne de bon de livraison (Réel)
+                # On regarde à quelle catégorie du Prévisionnel elle appartient
+                for idx_reel, row_reel in df_calc.iterrows():
+                    nom_reel = str(row_reel["Designation"]).lower()
+                    volume = row_reel["Volume (m3)"]
+                    match_found = False
+                    
+                    # On parcourt les catégories du prévisionnel pour trouver un mot clé correspondant
+                    for idx_prev, row_prev in df_target.iterrows():
+                        mot_cle = str(row_prev["Designation"]).lower()
+                        # Si le mot clé (ex: "voile") est dans la désignation réelle (ex: "voile rdc bat A")
+                        # OU si la désignation est identique
+                        if mot_cle in nom_reel: 
+                            df_target.at[idx_prev, "Volume Reel"] += volume
+                            match_found = True
+                            break
+                    
+                    # (Optionnel) Si aucun match, on pourrait l'ajouter dans une catégorie "Autre"
+                
+                # 4. AFFICHAGE PAR ZONE
                 for zone_name in ["INFRA", "SUPER"]:
                     st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
                     
-                    df_zone = df_merged[df_merged["Zone"] == zone_name]
+                    # On ne garde que les lignes de cette zone
+                    df_zone = df_target[df_target["Zone"] == zone_name]
                     
                     if not df_zone.empty:
-                        for index, row in df_zone.iterrows():
-                            st.markdown(f"### {row['Designation']}")
+                        for _, row in df_zone.iterrows():
+                            # Affichage Propre
+                            st.markdown(f"### {row['Designation']}") # Ex: "VOILES"
+                            
                             c1, c2, c3 = st.columns(3)
-                            c1.metric("Prévisionnel", f"{row['Prevu (m3)']:.2f} m³")
-                            c2.metric("Réel", f"{row['Volume (m3)']:.2f} m³")
-                            delta = row['Prevu (m3)'] - row['Volume (m3)']
-                            c3.metric("Écart", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
+                            prevu = row['Prevu (m3)']
+                            reel = row['Volume Reel']
+                            delta = prevu - reel
+                            
+                            c1.metric("Budget", f"{prevu:.2f} m³")
+                            c2.metric("Consommé (Cumul)", f"{reel:.2f} m³")
+                            
+                            # Couleur : Vert si on a du rab, Rouge si on a dépassé
+                            c3.metric("Reste / Écart", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
                             st.divider()
                     else:
-                        st.info(f"Rien en {zone_name}.")
+                        st.info(f"Aucun budget défini en {zone_name}.")
                     st.write("") 
             else:
-                st.info("Données manquantes.")
+                st.warning("Veuillez définir vos catégories (Voiles, Dalles...) dans l'onglet Prévisionnel.")
+                
     else:
         st.error("Fichier introuvable.")
