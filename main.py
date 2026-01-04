@@ -79,6 +79,20 @@ def analyser_ia(uploaded_file, api_key, prompt):
     if txt.startswith("```"): txt = txt.split("```")[1].replace("json", "").strip()
     return pd.DataFrame(json.loads(txt))
 
+# --- FONCTION INTELLIGENTE DE DÉTECTION DE ZONE ---
+def detecter_zone_automatique(texte):
+    """Détermine si c'est INFRA ou SUPER selon le texte"""
+    texte = str(texte).lower().strip()
+    # Liste des mots clés qui forcent la catégorie INFRA
+    mots_infra = ["r-", "s-sol", "sous-sol", "fondation", "radier", "pieux", "semelle", "longrine"]
+    
+    for mot in mots_infra:
+        if mot in texte:
+            return "INFRA"
+    
+    # Par défaut, tout le reste (RDC, R+1, etc.) va en SUPER
+    return "SUPER"
+
 # --- 4. INTERFACE ---
 if 'page' not in st.session_state: st.session_state.page = "Accueil"
 if 'relecture' not in st.session_state: st.session_state.relecture = None
@@ -193,7 +207,6 @@ else:
                 st.divider()
                 st.write("**Budget Existant (Cochez pour supprimer) :**")
                 
-                # AJOUT DE LA COLONNE SUPPRIMER POUR L'INTERFACE
                 df_prev_ui = df_prev.copy()
                 df_prev_ui["Supprimer"] = False
                 
@@ -205,27 +218,25 @@ else:
                     column_config={
                         "Supprimer": st.column_config.CheckboxColumn(
                             "Supprimer ?",
-                            help="Cochez pour supprimer la ligne",
                             default=False,
                         )
                     }
                 )
                 
                 if st.button("Sauvegarder et Supprimer cochés", key="save_prev_tbl"):
-                    # On ne garde que les lignes où Supprimer est FAUX
                     df_final = df_prev_edit[df_prev_edit["Supprimer"] == False].drop(columns=["Supprimer"])
-                    
                     sheets["Previsionnel"] = df_final
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.success("Mise à jour effectuée !")
                     st.rerun()
 
         with tab4:
-            st.subheader("Bilan consolidé")
+            st.subheader("Bilan consolidé par Zone et Famille")
             if not df_prev.empty:
+                # 1. Nettoyage des données
                 df_calc = df_beton.copy()
                 df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce').fillna(0)
-                df_calc["Designation"] = df_calc["Designation"].astype(str).str.lower().str.strip()
+                df_calc["Designation"] = df_calc["Designation"].astype(str).str.strip()
 
                 df_target = df_prev.copy()
                 df_target["Prevu (m3)"] = pd.to_numeric(df_target["Prevu (m3)"], errors='coerce').fillna(0)
@@ -234,15 +245,30 @@ else:
                 
                 df_target["Volume Reel"] = 0.0
                 
+                # 2. ALGORITHME DE REGROUPEMENT AVANCÉ (ZONE + MOT CLÉ)
                 for _, row_reel in df_calc.iterrows():
-                    nom_reel = row_reel["Designation"]
+                    nom_reel = row_reel["Designation"] # Ex: Voile R-1
                     vol_reel = row_reel["Volume (m3)"]
+                    
+                    # A. On détermine automatiquement la zone du bon de livraison
+                    zone_du_bon = detecter_zone_automatique(nom_reel)
+                    
+                    # B. On cherche une correspondance dans le budget
+                    # Condition : Il faut que le mot clé matche ET que la zone matche
+                    match_found = False
                     for idx_prev, row_prev in df_target.iterrows():
-                        mot_cle = str(row_prev["Designation"]).lower().strip()
-                        if mot_cle in nom_reel:
-                            df_target.at[idx_prev, "Volume Reel"] += vol_reel
-                            break 
+                        mot_cle_budget = str(row_prev["Designation"]).lower().strip()
+                        zone_budget = row_prev["Zone"]
+                        
+                        # Vérification 1 : La zone détectée correspond à la zone du budget
+                        if zone_du_bon == zone_budget:
+                            # Vérification 2 : Le mot clé (ex "voile") est dans le nom du bon (ex "voile r-1")
+                            if mot_cle_budget in nom_reel.lower():
+                                df_target.at[idx_prev, "Volume Reel"] += vol_reel
+                                match_found = True
+                                break 
                 
+                # 3. Affichage
                 for zone_name in ["INFRA", "SUPER"]:
                     st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
                     df_zone = df_target[df_target["Zone"] == zone_name]
@@ -258,7 +284,7 @@ else:
                             c3.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
                             st.divider()
                     else:
-                        st.info(f"Aucun élément en {zone_name}.")
+                        st.info(f"Aucun élément budgété en {zone_name}.")
                     st.write("") 
             else:
                 st.warning("Veuillez définir vos catégories dans l'onglet Prévisionnel.")
