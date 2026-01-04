@@ -204,7 +204,7 @@ else:
                 
                 # Affichage en format texte large (Metrics)
                 for index, row in df_final.iterrows():
-                    st.markdown(f"### 🏗️ {row['Designation']}")
+                    st.markdown(f"### {row['Designation']}")
                     col1, col2, col3 = st.columns(3)
                     
                     # Chiffre prévisionnel
@@ -227,3 +227,4 @@ else:
 
     else:
         st.error("Fichier Excel introuvable ou illisible sur GitHub.")
+
