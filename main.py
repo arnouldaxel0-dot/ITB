@@ -129,11 +129,16 @@ else:
     path_f = f"{BASE_DIR}/{nom_c}/{nom_c}.xlsx"
     sheets, sha = lire_excel_github(path_f)
     
-    if sheets:
+    if sheets is not None:
         tab1, tab2 = st.tabs(["💧 Beton", "🏗 Acier"])
         
         with tab1:
             up_b = st.file_uploader("Scan Bon Beton", type=['jpg','png','heic'], key="up_b")
+            
+            # Correction : Forcer l'affichage des colonnes même si vide
+            df_beton = sheets.get("Beton", pd.DataFrame(columns=COLS_BETON))
+            if df_beton.empty: df_beton = pd.DataFrame(columns=COLS_BETON)
+
             if up_b and st.session_state.relecture is None:
                 if st.button("Lancer l'Analyse IA", key="btn_b", type="primary"):
                     with st.spinner("IA en cours..."):
@@ -143,15 +148,20 @@ else:
             if st.session_state.relecture is not None:
                 df_m = st.data_editor(st.session_state.relecture, key="edit_b")
                 if st.button("Valider et Sauvegarder", key="save_b"):
-                    sheets["Beton"] = pd.concat([sheets["Beton"], df_m], ignore_index=True)
+                    sheets["Beton"] = pd.concat([df_beton, df_m], ignore_index=True)
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.session_state.relecture = None
                     st.rerun()
             st.divider()
-            st.dataframe(sheets.get("Beton", pd.DataFrame()), width='stretch')
+            st.dataframe(df_beton, width='stretch')
 
         with tab2:
             up_a = st.file_uploader("Scan Bon Acier", type=['jpg','png','heic'], key="up_a")
+            
+            # Correction : Forcer l'affichage des colonnes même si vide
+            df_acier = sheets.get("Acier", pd.DataFrame(columns=COLS_ACIER))
+            if df_acier.empty: df_acier = pd.DataFrame(columns=COLS_ACIER)
+
             if up_a and st.session_state.relecture is None:
                 if st.button("Lancer l'Analyse IA", key="btn_a", type="primary"):
                     with st.spinner("IA en cours..."):
@@ -161,9 +171,11 @@ else:
             if st.session_state.relecture is not None:
                 df_m = st.data_editor(st.session_state.relecture, key="edit_a")
                 if st.button("Valider et Sauvegarder", key="save_a"):
-                    sheets["Acier"] = pd.concat([sheets["Acier"], df_m], ignore_index=True)
+                    sheets["Acier"] = pd.concat([df_acier, df_m], ignore_index=True)
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.session_state.relecture = None
                     st.rerun()
             st.divider()
-            st.dataframe(sheets.get("Acier", pd.DataFrame()), width='stretch')
+            st.dataframe(df_acier, width='stretch')
+    else:
+        st.error("Fichier Excel introuvable ou illisible sur GitHub.")
