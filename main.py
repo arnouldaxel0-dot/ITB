@@ -133,6 +133,7 @@ else:
         if df_acier.empty: df_acier = pd.DataFrame(columns=COLS_ACIER)
 
         df_prev = sheets.get("Previsionnel", pd.DataFrame(columns=COLS_PREV))
+        # Sécurité pour les anciens fichiers sans colonne Zone
         if not df_prev.empty and "Zone" not in df_prev.columns:
             df_prev["Zone"] = "INFRA"
         if df_prev.empty: df_prev = pd.DataFrame(columns=COLS_PREV)
@@ -178,10 +179,12 @@ else:
             with col_half:
                 st.subheader("Ajouter un budget")
                 with st.form("ajout_prev"):
-                    new_des = st.text_input("Désignation générique (ex: Voiles, Dalles)")
+                    st.caption("Astuce : Utilisez le singulier (ex: 'Voile' au lieu de 'Voiles') pour mieux détecter les noms.")
+                    new_des = st.text_input("Désignation (ex: Voile, Dalle)")
                     new_vol = st.number_input("Volume Prévu (m3)", step=1.0)
                     new_zone = st.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
                     submitted = st.form_submit_button("Ajouter (+)")
+                    
                     if submitted and new_des:
                         new_row = pd.DataFrame([{"Designation": new_des, "Prevu (m3)": new_vol, "Zone": new_zone}])
                         sheets["Previsionnel"] = pd.concat([df_prev, new_row], ignore_index=True)
@@ -198,65 +201,60 @@ else:
         with tab4:
             st.subheader("Bilan consolidé par Famille")
             if not df_prev.empty:
-                # 1. On prépare les données réelles
+                # 1. Nettoyage des données
                 df_calc = df_beton.copy()
                 df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce').fillna(0)
-                
-                # 2. On prépare le prévisionnel
+                df_calc["Designation"] = df_calc["Designation"].astype(str).str.lower().str.strip()
+
                 df_target = df_prev.copy()
                 df_target["Prevu (m3)"] = pd.to_numeric(df_target["Prevu (m3)"], errors='coerce').fillna(0)
+                # On s'assure que la Zone est remplie pour tout le monde
+                if "Zone" not in df_target.columns: df_target["Zone"] = "INFRA"
+                df_target["Zone"] = df_target["Zone"].fillna("INFRA")
                 
-                # 3. ALGORITHME DE REGROUPEMENT INTELLIGENT
-                # On crée une nouvelle colonne 'Volume Reel' dans le tableau prévisionnel
+                # 2. Algorithme de calcul amélioré
                 df_target["Volume Reel"] = 0.0
                 
-                # Pour chaque ligne de bon de livraison (Réel)
-                # On regarde à quelle catégorie du Prévisionnel elle appartient
-                for idx_reel, row_reel in df_calc.iterrows():
-                    nom_reel = str(row_reel["Designation"]).lower()
-                    volume = row_reel["Volume (m3)"]
+                # On parcourt chaque bon de livraison (Réel)
+                for _, row_reel in df_calc.iterrows():
+                    nom_reel = row_reel["Designation"] # ex: "voile rdc bat a"
+                    vol_reel = row_reel["Volume (m3)"]
+                    
+                    # On cherche la MEILLEURE catégorie dans le budget
                     match_found = False
-                    
-                    # On parcourt les catégories du prévisionnel pour trouver un mot clé correspondant
                     for idx_prev, row_prev in df_target.iterrows():
-                        mot_cle = str(row_prev["Designation"]).lower()
-                        # Si le mot clé (ex: "voile") est dans la désignation réelle (ex: "voile rdc bat A")
-                        # OU si la désignation est identique
-                        if mot_cle in nom_reel: 
-                            df_target.at[idx_prev, "Volume Reel"] += volume
+                        mot_cle = str(row_prev["Designation"]).lower().strip() # ex: "voile"
+                        
+                        # Si le mot clé budget est contenu dans le nom réel
+                        # Ex: "voile" est dans "voile rdc bat a" -> MATCH
+                        if mot_cle in nom_reel:
+                            df_target.at[idx_prev, "Volume Reel"] += vol_reel
                             match_found = True
-                            break
-                    
-                    # (Optionnel) Si aucun match, on pourrait l'ajouter dans une catégorie "Autre"
+                            break # On arrête de chercher pour ce bon, il est classé.
                 
-                # 4. AFFICHAGE PAR ZONE
+                # 3. Affichage
                 for zone_name in ["INFRA", "SUPER"]:
                     st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
-                    
-                    # On ne garde que les lignes de cette zone
                     df_zone = df_target[df_target["Zone"] == zone_name]
                     
                     if not df_zone.empty:
                         for _, row in df_zone.iterrows():
-                            # Affichage Propre
-                            st.markdown(f"### {row['Designation']}") # Ex: "VOILES"
-                            
+                            st.markdown(f"### {row['Designation']}")
                             c1, c2, c3 = st.columns(3)
+                            
                             prevu = row['Prevu (m3)']
                             reel = row['Volume Reel']
                             delta = prevu - reel
                             
                             c1.metric("Budget", f"{prevu:.2f} m³")
-                            c2.metric("Consommé (Cumul)", f"{reel:.2f} m³")
-                            
-                            # Couleur : Vert si on a du rab, Rouge si on a dépassé
-                            c3.metric("Reste / Écart", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
+                            c2.metric("Consommé", f"{reel:.2f} m³")
+                            c3.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
                             st.divider()
                     else:
-                        st.info(f"Aucun budget défini en {zone_name}.")
+                        st.info(f"Aucune catégorie définie en {zone_name}.")
                     st.write("") 
             else:
-                st.warning("Veuillez définir vos catégories (Voiles, Dalles...) dans l'onglet Prévisionnel.")
+                st.warning("Veuillez définir vos catégories (Voile, Dalle...) dans l'onglet Prévisionnel.")
                 
     else:
         st.error("Fichier introuvable.")
