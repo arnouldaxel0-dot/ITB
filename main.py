@@ -11,7 +11,6 @@ from datetime import datetime
 
 # --- CONFIGURATION GITHUB ---
 try:
-    # On utilise .get pour eviter de faire planter l app si c est vide
     GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
     REPO_NAME = st.secrets.get("REPO_NAME", "")
     
@@ -89,6 +88,9 @@ def analyser_image(uploaded_file, api_key, prompt):
 if 'page' not in st.session_state: st.session_state.page = "Accueil"
 if 'relecture' not in st.session_state: st.session_state.relecture = None
 
+# CLE API UNIQUE DANS LA SIDEBAR (Evite l'erreur Duplicate ID)
+api_k = st.sidebar.text_input("Cle OpenAI", type="password")
+
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
@@ -97,7 +99,7 @@ if st.session_state.page == "Accueil":
         st.subheader("Chantiers")
         chantiers = lister_chantiers_github()
         for c in chantiers:
-            if st.button(f"Chantier {c}", use_container_width=True):
+            if st.button(f"Chantier {c}", key=f"btn_{c}", use_container_width=True):
                 st.session_state.page = c
                 st.rerun()
     with col2:
@@ -122,22 +124,30 @@ else:
     
     if all_sheets:
         t_beton, t_acier = st.tabs(["Beton", "Acier"])
+        
         def zone_scan(onglet, colonnes, prompt):
-            up = st.file_uploader(f"Photo {onglet}", type=['jpg','png','heic'], key=f"up{onglet}")
-            api_k = st.sidebar.text_input("Cle OpenAI", type="password")
+            up = st.file_uploader(f"Photo {onglet}", type=['jpg','png','heic'], key=f"up_{onglet}")
+            
             if up and api_k and st.session_state.relecture is None:
-                if st.button(f"Scanner {onglet}"):
-                    res = analyser_image(up, api_k, prompt + f" Colonnes: {colonnes}")
-                    st.session_state.relecture = res.reindex(columns=colonnes)
-                    st.rerun()
+                if st.button(f"Scanner {onglet}", key=f"btn_scan_{onglet}"):
+                    with st.spinner("Analyse..."):
+                        res = analyser_image(up, api_k, prompt + f" Colonnes: {colonnes}")
+                        st.session_state.relecture = res.reindex(columns=colonnes)
+                        st.rerun()
+            
             if st.session_state.relecture is not None:
-                df_m = st.data_editor(st.session_state.relecture)
-                if st.button("Enregistrer"):
+                st.write("Verifiez les donnees :")
+                df_m = st.data_editor(st.session_state.relecture, key=f"editor_{onglet}")
+                if st.button("Enregistrer", key=f"save_{onglet}"):
                     all_sheets[onglet] = pd.concat([all_sheets[onglet], df_m], ignore_index=True)
                     sauvegarder_excel_github(all_sheets, path_file, sha)
                     st.session_state.relecture = None
                     st.rerun()
+            
+            st.divider()
             st.dataframe(all_sheets[onglet], use_container_width=True)
 
         with t_beton: zone_scan("Beton", COLS_BETON, "Donnees beton JSON.")
         with t_acier: zone_scan("Acier", COLS_ACIER, "Donnees acier JSON.")
+    else:
+        st.error("Impossible de charger le fichier.")
