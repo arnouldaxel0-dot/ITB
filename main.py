@@ -106,7 +106,7 @@ if st.session_state.page == "Accueil":
     with c2:
         st.subheader("Nouveau")
         n = st.text_input("Nom du chantier", key="new_name_sync")
-        if st.button("Creer Projet") and n:
+        if st.button("Creer Chantier") and n:
             p = f"{BASE_DIR}/{n}/{n}.xlsx"
             try:
                 temp = repo.get_contents("template_itb77.xlsx")
@@ -130,7 +130,7 @@ else:
     sheets, sha = lire_excel_github(path_f)
     
     if sheets is not None:
-        tab1, tab2 = st.tabs(["💧 Beton", "🏗 Acier"])
+        tab1, tab2 = st.tabs(["Beton", "Acier"])
         
         with tab1:
             up_b = st.file_uploader("Scan Bon Beton", type=['jpg','png','heic'], key="up_b")
@@ -140,7 +140,7 @@ else:
             if df_beton.empty: df_beton = pd.DataFrame(columns=COLS_BETON)
 
             if up_b and st.session_state.relecture is None:
-                if st.button("Lancer l'Analyse IA", key="btn_b", type="primary"):
+                if st.button("Envoyer Bon", key="btn_b", type="primary"):
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_b, OPENAI_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
                         st.session_state.relecture = res.reindex(columns=COLS_BETON)
@@ -156,14 +156,14 @@ else:
             st.dataframe(df_beton, width='stretch')
 
         with tab2:
-            up_a = st.file_uploader("Scan Bon Acier", type=['jpg','png','heic'], key="up_a")
+            up_a = st.file_uploader("Bon acier", type=['jpg','png','heic'], key="up_a")
             
             # Correction : Forcer l'affichage des colonnes même si vide
             df_acier = sheets.get("Acier", pd.DataFrame(columns=COLS_ACIER))
             if df_acier.empty: df_acier = pd.DataFrame(columns=COLS_ACIER)
 
             if up_a and st.session_state.relecture is None:
-                if st.button("Lancer l'Analyse IA", key="btn_a", type="primary"):
+                if st.button("Envoyer Bon", key="btn_a", type="primary"):
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_a, OPENAI_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
                         st.session_state.relecture = res.reindex(columns=COLS_ACIER)
@@ -179,3 +179,4 @@ else:
             st.dataframe(df_acier, width='stretch')
     else:
         st.error("Fichier Excel introuvable ou illisible sur GitHub.")
+
