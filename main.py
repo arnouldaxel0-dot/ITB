@@ -86,7 +86,6 @@ def analyser_ia(uploaded_file, api_key, prompt):
         return pd.DataFrame()
 
 def detecter_zone_automatique(texte):
-    """Détermine si c'est INFRA ou SUPER selon le texte"""
     texte = str(texte).lower().strip()
     mots_infra = ["r-", "s-sol", "sous-sol", "fondation", "radier", "pieux", "semelle", "longrine", "infra"]
     for mot in mots_infra:
@@ -171,18 +170,24 @@ else:
             if st.session_state.relecture is not None:
                 st.info("Vérifiez les lignes où '⚠️' est coché.")
                 
-                # MODIFICATION : Titre raccourci à "⚠️" et width=30
+                # --- MODIFICATION POUR LA TAILLE DES COLONNES ---
                 df_m = st.data_editor(
                     st.session_state.relecture, 
                     key="edit_b",
-                    disabled=["Doute"], 
+                    disabled=["Doute"],
+                    use_container_width=True, # On garde ça pour que le tableau soit beau
                     column_config={
                         "Doute": st.column_config.CheckboxColumn(
-                            "⚠️", # Titre raccourci pour gagner de la place
+                            "⚠️",
                             help="L'IA a coché cette case car elle n'était pas sûre.",
                             default=False,
-                            width=30 # Largeur en pixels forcée au minimum
-                        )
+                            width="small" # Force au minimum
+                        ),
+                        # On force les autres colonnes à être LARGE pour écraser la colonne Doute
+                        "Fournisseur": st.column_config.TextColumn("Fournisseur", width="medium"),
+                        "Designation": st.column_config.TextColumn("Désignation", width="large"),
+                        "Type de Beton": st.column_config.TextColumn("Type de Beton", width="medium"),
+                        "Volume (m3)": st.column_config.NumberColumn("Volume (m3)", width="medium"),
                     }
                 )
                 
@@ -206,18 +211,24 @@ else:
                         st.rerun()
             if st.session_state.relecture is not None:
                 st.info("Vérifiez les lignes où '⚠️' est coché.")
-                # MODIFICATION : Titre raccourci à "⚠️" et width=30
+                
+                # --- MODIFICATION POUR LA TAILLE DES COLONNES ACIER ---
                 df_m = st.data_editor(
                     st.session_state.relecture, 
                     key="edit_a",
                     disabled=["Doute"],
+                    use_container_width=True,
                     column_config={
                         "Doute": st.column_config.CheckboxColumn(
                             "⚠️",
-                            help="L'IA a coché cette case car elle n'était pas sûre.",
                             default=False,
-                            width=30
-                        )
+                            width="small"
+                        ),
+                        # On force les autres à prendre de la place
+                        "Fournisseur": st.column_config.TextColumn("Fournisseur", width="medium"),
+                        "Type d Acier": st.column_config.TextColumn("Type d Acier", width="medium"),
+                        "Designation": st.column_config.TextColumn("Désignation", width="large"),
+                        "Poids (kg)": st.column_config.NumberColumn("Poids (kg)", width="medium"),
                     }
                 )
                 if st.button("Valider et Sauvegarder", key="save_a"):
@@ -262,7 +273,9 @@ else:
                             "Supprimer ?",
                             default=False,
                             width="small"
-                        )
+                        ),
+                        "Designation": st.column_config.TextColumn("Désignation", width="large"),
+                        "Zone": st.column_config.TextColumn("Zone", width="medium"),
                     }
                 )
                 
