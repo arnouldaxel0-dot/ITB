@@ -30,7 +30,7 @@ COLS_BETON = ["Fournisseur", "Designation", "Type de Beton", "Volume (m3)"]
 COLS_ACIER = ["Fournisseur", "Type d Acier", "Designation", "Poids (kg)"]
 COLS_PREV = ["Designation", "Prevu (m3)", "Zone"]
 
-# MODIFICATION ICI : Changement du nom de l'onglet
+# Titre de l'onglet du navigateur
 st.set_page_config(page_title="Suivi béton", layout="wide")
 
 # --- 3. FONCTIONS ---
@@ -70,15 +70,23 @@ def analyser_ia(uploaded_file, api_key, prompt):
     
     b64 = base64.b64encode(img_bytes).decode('utf-8')
     headers = {"Authorization": f"Bearer {api_key}"}
+    
+    # ON AJOUTE L'INSTRUCTION DU DOUTE AU PROMPT
+    prompt_complet = prompt + ". Ajoute une colonne 'Doute' (boolean) : mets true si le texte est difficile à lire, flou ou si tu n'es pas sûr d'un mot. Sinon false."
+    
     payload = {
         "model": "gpt-4o",
-        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}],
+        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt_complet}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}],
         "temperature": 0
     }
     r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload).json()
-    txt = r['choices'][0]['message']['content'].strip()
-    if txt.startswith("```"): txt = txt.split("```")[1].replace("json", "").strip()
-    return pd.DataFrame(json.loads(txt))
+    try:
+        txt = r['choices'][0]['message']['content'].strip()
+        if txt.startswith("```"): txt = txt.split("```")[1].replace("json", "").strip()
+        return pd.DataFrame(json.loads(txt))
+    except:
+        st.error("Erreur lors de l'analyse IA.")
+        return pd.DataFrame()
 
 def detecter_zone_automatique(texte):
     """Détermine si c'est INFRA ou SUPER selon le texte"""
@@ -125,7 +133,6 @@ if st.session_state.page == "Accueil":
 else:
     nom_c = st.session_state.page
     
-    # En-tête Chantier
     col_titre_c, col_act_c, col_ret_c = st.columns([6, 2, 2])
     with col_titre_c:
         st.header(f"📍 {nom_c}")
@@ -160,13 +167,32 @@ else:
             if up_b and st.session_state.relecture is None:
                 if st.button("Envoyer Bon", key="btn_b", type="primary"):
                     with st.spinner("IA en cours..."):
+                        # On demande à l'IA d'ajouter la colonne Doute
                         res = analyser_ia(up_b, OPENAI_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
-                        st.session_state.relecture = res.reindex(columns=COLS_BETON)
+                        # On ajoute la colonne Doute à l'affichage temporaire
+                        cols_temp = ["Doute"] + COLS_BETON 
+                        st.session_state.relecture = res.reindex(columns=cols_temp)
                         st.rerun()
             if st.session_state.relecture is not None:
-                df_m = st.data_editor(st.session_state.relecture, key="edit_b")
+                st.info("Cochez ou décochez la case 'Doute' pour vérification.")
+                
+                # Configuration de la colonne Doute pour qu'elle s'affiche bien
+                df_m = st.data_editor(
+                    st.session_state.relecture, 
+                    key="edit_b",
+                    column_config={
+                        "Doute": st.column_config.CheckboxColumn(
+                            "⚠️ Doute ?",
+                            help="L'IA a coché cette case car elle n'était pas sûre de la lecture.",
+                            default=False,
+                        )
+                    }
+                )
+                
                 if st.button("Valider et Sauvegarder", key="save_b"):
-                    sheets["Beton"] = pd.concat([df_beton, df_m], ignore_index=True)
+                    # IMPORTANT : On retire la colonne Doute avant de sauvegarder pour garder le fichier propre
+                    df_clean = df_m.drop(columns=["Doute"], errors="ignore")
+                    sheets["Beton"] = pd.concat([df_beton, df_clean], ignore_index=True)
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.session_state.relecture = None
                     st.rerun()
@@ -179,12 +205,25 @@ else:
                 if st.button("Envoyer Bon", key="btn_a", type="primary"):
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_a, OPENAI_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
-                        st.session_state.relecture = res.reindex(columns=COLS_ACIER)
+                        cols_temp = ["Doute"] + COLS_ACIER
+                        st.session_state.relecture = res.reindex(columns=cols_temp)
                         st.rerun()
             if st.session_state.relecture is not None:
-                df_m = st.data_editor(st.session_state.relecture, key="edit_a")
+                st.info("Vérifiez les lignes cochées.")
+                df_m = st.data_editor(
+                    st.session_state.relecture, 
+                    key="edit_a",
+                    column_config={
+                        "Doute": st.column_config.CheckboxColumn(
+                            "⚠️ Doute ?",
+                            help="L'IA a coché cette case car elle n'était pas sûre.",
+                            default=False,
+                        )
+                    }
+                )
                 if st.button("Valider et Sauvegarder", key="save_a"):
-                    sheets["Acier"] = pd.concat([df_acier, df_m], ignore_index=True)
+                    df_clean = df_m.drop(columns=["Doute"], errors="ignore")
+                    sheets["Acier"] = pd.concat([df_acier, df_clean], ignore_index=True)
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.session_state.relecture = None
                     st.rerun()
@@ -248,19 +287,15 @@ else:
                 
                 df_target["Volume Reel"] = 0.0
                 
-                # ALGORITHME DE REGROUPEMENT INTELLIGENT
                 for _, row_reel in df_calc.iterrows():
                     nom_reel = row_reel["Designation"] 
                     vol_reel = row_reel["Volume (m3)"]
-                    
-                    # Détection auto de la zone du bon (ex: R-1 -> INFRA)
                     zone_du_bon = detecter_zone_automatique(nom_reel)
                     
                     for idx_prev, row_prev in df_target.iterrows():
                         mot_cle_budget = str(row_prev["Designation"]).lower().strip()
                         zone_budget = row_prev["Zone"]
                         
-                        # Match si Zone ET Mot clé correspondent
                         if zone_du_bon == zone_budget:
                             if mot_cle_budget in nom_reel.lower():
                                 df_target.at[idx_prev, "Volume Reel"] += vol_reel
