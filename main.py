@@ -30,7 +30,8 @@ COLS_BETON = ["Fournisseur", "Designation", "Type de Beton", "Volume (m3)"]
 COLS_ACIER = ["Fournisseur", "Type d Acier", "Designation", "Poids (kg)"]
 COLS_PREV = ["Designation", "Prevu (m3)", "Zone"]
 
-st.set_page_config(page_title="ITB77 PRO", layout="wide")
+# MODIFICATION ICI : Changement du nom de l'onglet
+st.set_page_config(page_title="Suivi béton", layout="wide")
 
 # --- 3. FONCTIONS ---
 def lire_excel_github(path):
@@ -79,18 +80,13 @@ def analyser_ia(uploaded_file, api_key, prompt):
     if txt.startswith("```"): txt = txt.split("```")[1].replace("json", "").strip()
     return pd.DataFrame(json.loads(txt))
 
-# --- FONCTION INTELLIGENTE DE DÉTECTION DE ZONE ---
 def detecter_zone_automatique(texte):
     """Détermine si c'est INFRA ou SUPER selon le texte"""
     texte = str(texte).lower().strip()
-    # Liste des mots clés qui forcent la catégorie INFRA
-    mots_infra = ["r-", "s-sol", "sous-sol", "fondation", "radier", "pieux", "semelle", "longrine"]
-    
+    mots_infra = ["r-", "s-sol", "sous-sol", "fondation", "radier", "pieux", "semelle", "longrine", "infra"]
     for mot in mots_infra:
         if mot in texte:
             return "INFRA"
-    
-    # Par défaut, tout le reste (RDC, R+1, etc.) va en SUPER
     return "SUPER"
 
 # --- 4. INTERFACE ---
@@ -103,7 +99,7 @@ if st.session_state.page == "Accueil":
     col_titre, col_refresh = st.columns([8, 2])
     with col_titre: st.subheader("Mes Projets")
     with col_refresh:
-        if st.button("🔄 Actualiser", width='stretch'): st.rerun()
+        if st.button("🔄 Actualiser", width='stretch', key="refresh_home"): st.rerun()
 
     c1, c2 = st.columns([6, 4])
     with c1:
@@ -128,11 +124,19 @@ if st.session_state.page == "Accueil":
 
 else:
     nom_c = st.session_state.page
-    st.header(f"📍 {nom_c}")
-    if st.button("⬅ Retour"):
-        st.session_state.page = "Accueil"
-        st.session_state.relecture = None
-        st.rerun()
+    
+    # En-tête Chantier
+    col_titre_c, col_act_c, col_ret_c = st.columns([6, 2, 2])
+    with col_titre_c:
+        st.header(f"📍 {nom_c}")
+    with col_act_c:
+        if st.button("🔄 Actualiser", key="refresh_site", width='stretch'):
+            st.rerun()
+    with col_ret_c:
+        if st.button("⬅ Retour", key="back_home", width='stretch'):
+            st.session_state.page = "Accueil"
+            st.session_state.relecture = None
+            st.rerun()
 
     path_f = f"{BASE_DIR}/{nom_c}/{nom_c}.xlsx"
     sheets, sha = lire_excel_github(path_f)
@@ -233,7 +237,6 @@ else:
         with tab4:
             st.subheader("Bilan consolidé par Zone et Famille")
             if not df_prev.empty:
-                # 1. Nettoyage des données
                 df_calc = df_beton.copy()
                 df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce').fillna(0)
                 df_calc["Designation"] = df_calc["Designation"].astype(str).str.strip()
@@ -245,30 +248,24 @@ else:
                 
                 df_target["Volume Reel"] = 0.0
                 
-                # 2. ALGORITHME DE REGROUPEMENT AVANCÉ (ZONE + MOT CLÉ)
+                # ALGORITHME DE REGROUPEMENT INTELLIGENT
                 for _, row_reel in df_calc.iterrows():
-                    nom_reel = row_reel["Designation"] # Ex: Voile R-1
+                    nom_reel = row_reel["Designation"] 
                     vol_reel = row_reel["Volume (m3)"]
                     
-                    # A. On détermine automatiquement la zone du bon de livraison
+                    # Détection auto de la zone du bon (ex: R-1 -> INFRA)
                     zone_du_bon = detecter_zone_automatique(nom_reel)
                     
-                    # B. On cherche une correspondance dans le budget
-                    # Condition : Il faut que le mot clé matche ET que la zone matche
-                    match_found = False
                     for idx_prev, row_prev in df_target.iterrows():
                         mot_cle_budget = str(row_prev["Designation"]).lower().strip()
                         zone_budget = row_prev["Zone"]
                         
-                        # Vérification 1 : La zone détectée correspond à la zone du budget
+                        # Match si Zone ET Mot clé correspondent
                         if zone_du_bon == zone_budget:
-                            # Vérification 2 : Le mot clé (ex "voile") est dans le nom du bon (ex "voile r-1")
                             if mot_cle_budget in nom_reel.lower():
                                 df_target.at[idx_prev, "Volume Reel"] += vol_reel
-                                match_found = True
                                 break 
                 
-                # 3. Affichage
                 for zone_name in ["INFRA", "SUPER"]:
                     st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
                     df_zone = df_target[df_target["Zone"] == zone_name]
