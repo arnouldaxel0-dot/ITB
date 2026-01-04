@@ -169,19 +169,19 @@ else:
                         st.session_state.relecture = res.reindex(columns=cols_temp)
                         st.rerun()
             if st.session_state.relecture is not None:
-                st.info("Vérifiez les lignes où 'Doute' est coché et modifier DANS LE TABLEAU si besoin.")
+                st.info("Vérifiez les lignes où '⚠️' est coché.")
                 
-                # MODIFICATION : Ajout de disabled=["Doute"]
+                # MODIFICATION : Titre raccourci à "⚠️" et width=30
                 df_m = st.data_editor(
                     st.session_state.relecture, 
                     key="edit_b",
-                    disabled=["Doute"], # Empêche la modification de cette colonne
+                    disabled=["Doute"], 
                     column_config={
                         "Doute": st.column_config.CheckboxColumn(
-                            "⚠️ Doute ?",
+                            "⚠️", # Titre raccourci pour gagner de la place
                             help="L'IA a coché cette case car elle n'était pas sûre.",
                             default=False,
-                            width="small" 
+                            width=30 # Largeur en pixels forcée au minimum
                         )
                     }
                 )
@@ -205,18 +205,18 @@ else:
                         st.session_state.relecture = res.reindex(columns=cols_temp)
                         st.rerun()
             if st.session_state.relecture is not None:
-                st.info("Vérifiez les lignes où 'Doute' est coché.")
-                # MODIFICATION : Ajout de disabled=["Doute"]
+                st.info("Vérifiez les lignes où '⚠️' est coché.")
+                # MODIFICATION : Titre raccourci à "⚠️" et width=30
                 df_m = st.data_editor(
                     st.session_state.relecture, 
                     key="edit_a",
-                    disabled=["Doute"], # Empêche la modification de cette colonne
+                    disabled=["Doute"],
                     column_config={
                         "Doute": st.column_config.CheckboxColumn(
-                            "⚠️ Doute ?",
+                            "⚠️",
                             help="L'IA a coché cette case car elle n'était pas sûre.",
                             default=False,
-                            width="small"
+                            width=30
                         )
                     }
                 )
@@ -323,4 +323,3 @@ else:
                 
     else:
         st.error("Fichier introuvable.")
-
