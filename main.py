@@ -28,7 +28,6 @@ except Exception as e:
 BASE_DIR = "CHANTIERS_ITB77"
 COLS_BETON = ["Fournisseur", "Designation", "Type de Beton", "Volume (m3)"]
 COLS_ACIER = ["Fournisseur", "Type d Acier", "Designation", "Poids (kg)"]
-# Mise à jour des colonnes du prévisionnel avec la Zone
 COLS_PREV = ["Designation", "Prevu (m3)", "Zone"]
 
 st.set_page_config(page_title="ITB77 PRO", layout="wide")
@@ -134,7 +133,6 @@ else:
         if df_acier.empty: df_acier = pd.DataFrame(columns=COLS_ACIER)
 
         df_prev = sheets.get("Previsionnel", pd.DataFrame(columns=COLS_PREV))
-        # Si la colonne Zone n'existe pas encore (anciens fichiers), on l'ajoute
         if not df_prev.empty and "Zone" not in df_prev.columns:
             df_prev["Zone"] = "INFRA"
         if df_prev.empty: df_prev = pd.DataFrame(columns=COLS_PREV)
@@ -176,78 +174,77 @@ else:
             st.dataframe(df_acier, width='stretch')
 
         with tab3:
-            st.subheader("Saisie du Prévisionnel Béton")
-            st.info("Sélectionnez la zone (INFRA ou SUPER) pour chaque élément.")
+            # Création de deux colonnes : celle de gauche prend 50% (pour le tableau), celle de droite est vide
+            col_half, col_void = st.columns([1, 1])
             
-            # Configuration de la colonne Zone avec une liste déroulante
-            df_prev_edit = st.data_editor(
-                df_prev, 
-                num_rows="dynamic", 
-                key="edit_prev", 
-                width='stretch',
-                column_config={
-                    "Zone": st.column_config.SelectboxColumn(
-                        "Zone",
-                        options=["INFRA", "SUPER"],
-                        width="medium",
-                        required=True,
-                    )
-                }
-            )
-            if st.button("Enregistrer le Prévisionnel", key="save_prev"):
-                sheets["Previsionnel"] = df_prev_edit
-                sauvegarder_excel_github(sheets, path_f, sha)
-                st.success("Prévisionnel mis à jour !")
-                st.rerun()
+            with col_half:
+                st.subheader("Ajouter un budget")
+                
+                # --- FORMULAIRE D'AJOUT ---
+                with st.form("ajout_prev"):
+                    new_des = st.text_input("Désignation (ex: Voiles RDC)")
+                    new_vol = st.number_input("Volume Prévu (m3)", step=1.0)
+                    # LES BOUTONS RADIO HORIZONTAUX
+                    new_zone = st.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
+                    
+                    submitted = st.form_submit_button("Ajouter (+)")
+                    
+                    if submitted and new_des:
+                        new_row = pd.DataFrame([{"Designation": new_des, "Prevu (m3)": new_vol, "Zone": new_zone}])
+                        sheets["Previsionnel"] = pd.concat([df_prev, new_row], ignore_index=True)
+                        sauvegarder_excel_github(sheets, path_f, sha)
+                        st.rerun()
+
+                st.divider()
+                st.write("**Modifier l'existant :**")
+                # Tableau réduit en largeur car il est dans col_half
+                df_prev_edit = st.data_editor(
+                    df_prev, 
+                    num_rows="dynamic", 
+                    key="edit_prev", 
+                    use_container_width=True
+                )
+                
+                # Bouton de sauvegarde global pour les modifications directes dans le tableau
+                if st.button("Enregistrer modifications tableau", key="save_prev_table"):
+                    sheets["Previsionnel"] = df_prev_edit
+                    sauvegarder_excel_github(sheets, path_f, sha)
+                    st.success("Tableau mis à jour !")
+                    st.rerun()
 
         with tab4:
-            st.subheader("Bilan par Zone (Réel vs Prévu)")
-            
             if not df_beton.empty or not df_prev.empty:
-                # Calcul des réels
                 df_calc = df_beton.copy()
                 df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce')
                 recap_reel = df_calc.groupby("Designation")["Volume (m3)"].sum().reset_index()
                 
-                # Préparation du prévisionnel
-                df_prev_clean = df_prev.copy()
-                df_prev_clean["Prevu (m3)"] = pd.to_numeric(df_prev_clean["Prevu (m3)"], errors='coerce')
+                df_prev["Prevu (m3)"] = pd.to_numeric(df_prev["Prevu (m3)"], errors='coerce')
                 
-                # Fusion
-                df_merged = pd.merge(recap_reel, df_prev_clean, on="Designation", how="outer").fillna(0)
+                df_merged = pd.merge(recap_reel, df_prev, on="Designation", how="outer").fillna(0)
                 
-                # Si la colonne zone est vide suite au merge (cas où on a du réel mais pas de prévu), on met une valeur par défaut
                 if "Zone" in df_merged.columns:
                     df_merged["Zone"] = df_merged["Zone"].replace(0, "Indéfini")
                 else:
                     df_merged["Zone"] = "Indéfini"
 
-                # BOUCLE POUR AFFICHER LES DEUX PARTIES
                 for zone_name in ["INFRA", "SUPER"]:
                     st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
                     
-                    # Filtre sur la zone
                     df_zone = df_merged[df_merged["Zone"] == zone_name]
                     
                     if not df_zone.empty:
                         for index, row in df_zone.iterrows():
                             st.markdown(f"### {row['Designation']}")
                             c1, c2, c3 = st.columns(3)
-                            
                             c1.metric("Prévisionnel", f"{row['Prevu (m3)']:.2f} m³")
                             c2.metric("Réel", f"{row['Volume (m3)']:.2f} m³")
-                            
                             delta = row['Prevu (m3)'] - row['Volume (m3)']
-                            # Delta positif = vert (reste du budget), Delta négatif = rouge (dépassement)
                             c3.metric("Écart", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
                             st.divider()
                     else:
-                        st.info(f"Aucun élément en {zone_name} pour le moment.")
-                    
-                    st.write("") # Espace entre les deux zones
-
+                        st.info(f"Rien en {zone_name}.")
+                    st.write("") 
             else:
-                st.info("Aucune donnée disponible. Commencez par remplir le Prévisionnel.")
-
+                st.info("Données manquantes.")
     else:
-        st.error("Fichier Excel introuvable.")
+        st.error("Fichier introuvable.")
