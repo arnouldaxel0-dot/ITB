@@ -13,6 +13,7 @@ from datetime import datetime
 try:
     GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
     REPO_NAME = st.secrets.get("REPO_NAME", "")
+    # ON RÉCUPÈRE LA CLÉ OPENAI ICI
     OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
     
     if GITHUB_TOKEN and REPO_NAME:
@@ -50,14 +51,16 @@ def sauvegarder_excel_github(file_dict, path, sha=None):
 
 def lister_chantiers():
     try:
+        # On force GitHub à ne pas utiliser de cache pour voir les modifs des autres appareils
         contents = repo.get_contents(BASE_DIR)
         return sorted([c.name for c in contents if c.type == "dir"])
     except: return []
 
 def analyser_ia(uploaded_file, api_key, prompt):
     if not api_key:
-        st.error("La cle OpenAI est manquante dans les Secrets.")
+        st.error("La cle OpenAI est manquante dans les Secrets de l'application.")
         return None
+        
     file_ext = uploaded_file.name.lower()
     if file_ext.endswith('.heic'):
         heif_file = pillow_heif.read_heif(uploaded_file)
@@ -66,6 +69,7 @@ def analyser_ia(uploaded_file, api_key, prompt):
         image.save(buffer, format="JPEG")
         img_bytes = buffer.getvalue()
     else: img_bytes = uploaded_file.getvalue()
+    
     b64 = base64.b64encode(img_bytes).decode('utf-8')
     headers = {"Authorization": f"Bearer {api_key}"}
     payload = {
@@ -85,13 +89,17 @@ if 'relecture' not in st.session_state: st.session_state.relecture = None
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
+    # Entête avec bouton d'actualisation pour synchroniser les appareils
     col_titre, col_refresh = st.columns([8, 2])
-    with col_titre: st.subheader("Mes Projets")
+    with col_titre:
+        st.subheader("Mes Projets")
     with col_refresh:
-        if st.button("🔄 Actualiser", width='stretch'): st.rerun()
+        if st.button("🔄 Actualiser", width='stretch'):
+            st.rerun()
 
     c1, c2 = st.columns([6, 4])
     with c1:
+        # La liste est rafraîchie à chaque chargement de la page d'accueil
         for c in lister_chantiers():
             if st.button(f"🏢 {c}", key=f"sel_{c}", width='stretch'):
                 st.session_state.page = c
@@ -125,6 +133,7 @@ else:
     if sheets is not None:
         tab1, tab2, tab3, tab4 = st.tabs(["Beton", "Acier", "Prévisionnel", "Récapitulatif"])
         
+        # Préparation des données
         df_beton = sheets.get("Beton", pd.DataFrame(columns=COLS_BETON))
         if df_beton.empty: df_beton = pd.DataFrame(columns=COLS_BETON)
         
@@ -133,7 +142,7 @@ else:
 
         df_prev = sheets.get("Previsionnel", pd.DataFrame(columns=COLS_PREV))
         if df_prev.empty: df_prev = pd.DataFrame(columns=COLS_PREV)
-
+        
         with tab1:
             up_b = st.file_uploader("Scan Bon Beton", type=['jpg','png','heic'], key="up_b")
             if up_b and st.session_state.relecture is None:
@@ -172,44 +181,49 @@ else:
 
         with tab3:
             st.subheader("Saisie du Prévisionnel Béton")
-            st.write("Entrez les quantités prévues pour chaque désignation (ex: Fondations, Voiles, etc.)")
-            # Éditeur pour le tableau prévisionnel
+            st.info("Ajoutez ici les quantités de béton prévues pour chaque élément (Fondations, Poteaux, etc.)")
             df_prev_edit = st.data_editor(df_prev, num_rows="dynamic", key="edit_prev", width='stretch')
             if st.button("Enregistrer le Prévisionnel", key="save_prev"):
                 sheets["Previsionnel"] = df_prev_edit
                 sauvegarder_excel_github(sheets, path_f, sha)
-                st.success("Prévisionnel enregistré !")
+                st.success("Prévisionnel mis à jour sur GitHub !")
                 st.rerun()
 
         with tab4:
-            st.subheader("Analyse des écarts Béton (Réel vs Prévu)")
-            if not df_beton.empty:
-                # Préparation calculs
+            st.subheader("Bilan par Élément (Réel vs Prévu)")
+            if not df_beton.empty and not df_prev.empty:
+                # Calculs des sommes par Désignation
                 df_calc = df_beton.copy()
                 df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce')
                 recap_reel = df_calc.groupby("Designation")["Volume (m3)"].sum().reset_index()
                 
-                # Fusion avec le prévisionnel
-                if not df_prev.empty:
-                    df_prev["Prevu (m3)"] = pd.to_numeric(df_prev["Prevu (m3)"], errors='coerce')
-                    df_final = pd.merge(recap_reel, df_prev, on="Designation", how="outer").fillna(0)
-                    df_final["Delta (m3)"] = df_final["Prevu (m3)"] - df_final["Volume (m3)"]
-
-                    # Fonction pour colorer les lignes
-                    def color_delta(val):
-                        if val < 0: return 'color: #e74c3c; font-weight: bold' # Rouge si dépassement (Delta négatif)
-                        elif val > 0: return 'color: #2ecc71; font-weight: bold' # Vert si en dessous
-                        else: return ''
-
-                    st.write("**Récapitulatif par élément :**")
-                    st.dataframe(df_final.style.applymap(color_delta, subset=['Delta (m3)']), width='stretch', hide_index=True)
+                df_prev["Prevu (m3)"] = pd.to_numeric(df_prev["Prevu (m3)"], errors='coerce')
+                
+                # Fusion des données
+                df_final = pd.merge(recap_reel, df_prev, on="Designation", how="outer").fillna(0)
+                
+                # Affichage en format texte large (Metrics)
+                for index, row in df_final.iterrows():
+                    st.markdown(f"### 🏗️ {row['Designation']}")
+                    col1, col2, col3 = st.columns(3)
                     
-                    st.bar_chart(df_final.set_index("Designation")[["Volume (m3)", "Prevu (m3)"]])
-                else:
-                    st.warning("Veuillez saisir des données dans l'onglet 'Prévisionnel' pour voir l'analyse.")
-                    st.dataframe(recap_reel, width='stretch')
+                    # Chiffre prévisionnel
+                    col1.metric("Prévisionnel", f"{row['Prevu (m3)']:.2f} m³")
+                    
+                    # Chiffre réel
+                    col2.metric("Réel", f"{row['Volume (m3)']:.2f} m³")
+                    
+                    # Écart avec couleur automatique
+                    # Delta = Prévu - Réel. Si > 0 (budget restant) -> Vert. Si < 0 (dépassement) -> Rouge.
+                    delta = row['Prevu (m3)'] - row['Volume (m3)']
+                    col3.metric("Écart", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
+                    
+                    st.divider()
             else:
-                st.info("Aucun bon de béton enregistré.")
+                if df_beton.empty:
+                    st.info("Aucun bon de béton enregistré pour le moment.")
+                if df_prev.empty:
+                    st.warning("Veuillez d'abord remplir le tableau dans l'onglet 'Prévisionnel'.")
 
     else:
         st.error("Fichier Excel introuvable ou illisible sur GitHub.")
