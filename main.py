@@ -169,7 +169,7 @@ else:
                         st.session_state.relecture = res.reindex(columns=cols_temp)
                         st.rerun()
             if st.session_state.relecture is not None:
-                st.info("Vérifiez les lignes où 'Doute' est coché.")
+                st.info("Vérifiez les lignes où 'Doute' est coché et modifier DANS LE TABLEAU si besoin.")
                 
                 # MODIFICATION : Ajout de disabled=["Doute"]
                 df_m = st.data_editor(
@@ -323,3 +323,4 @@ else:
                 
     else:
         st.error("Fichier introuvable.")
+
