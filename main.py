@@ -11,27 +11,31 @@ from datetime import datetime
 
 # --- CONFIGURATION GITHUB ---
 try:
-    GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-    REPO_NAME = st.secrets["REPO_NAME"]
-    g = Github(GITHUB_TOKEN)
-    repo = g.get_repo(REPO_NAME)
-except Exception:
-    st.error("Configuration GitHub manquante dans les Secrets.")
+    # On utilise .get pour eviter de faire planter l app si c est vide
+    GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
+    REPO_NAME = st.secrets.get("REPO_NAME", "")
+    
+    if GITHUB_TOKEN and REPO_NAME:
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(REPO_NAME)
+    else:
+        st.error("Erreur : GITHUB_TOKEN ou REPO_NAME absent des Secrets.")
+except Exception as e:
+    st.error(f"Erreur de configuration : {e}")
 
 # --- CONFIGURATION PROJET ---
 BASE_DIR = "CHANTIERS_ITB77"
-COLS_BETON = ["Fournisseur", "Désignation", "Type de Béton", "Volume (m3)"]
-COLS_ACIER = ["Fournisseur", "Type d'Acier", "Désignation", "Poids (kg)"]
+COLS_BETON = ["Fournisseur", "Designation", "Type de Beton", "Volume (m3)"]
+COLS_ACIER = ["Fournisseur", "Type d Acier", "Designation", "Poids (kg)"]
 
 st.set_page_config(page_title="Scan Pro ITB77", layout="wide")
 
 # --- FONCTIONS GITHUB ---
-
 def lire_excel_github(path):
     try:
         content = repo.get_contents(path)
         return pd.read_excel(io.BytesIO(content.decoded_content), sheet_name=None), content.sha
-    except Exception:
+    except:
         return None, None
 
 def sauvegarder_excel_github(file_dict, path, sha=None):
@@ -42,15 +46,15 @@ def sauvegarder_excel_github(file_dict, path, sha=None):
     
     content_bytes = output.getvalue()
     if sha:
-        repo.update_file(path, f"MAJ {path}", content_bytes, sha)
+        repo.update_file(path, "MAJ chantier", content_bytes, sha)
     else:
-        repo.create_file(path, f"Creation {path}", content_bytes)
+        repo.create_file(path, "Creation chantier", content_bytes)
 
 def lister_chantiers_github():
     try:
         contents = repo.get_contents(BASE_DIR)
         return sorted([c.name for c in contents if c.type == "dir"])
-    except Exception:
+    except:
         return []
 
 # --- LOGIQUE IA ---
@@ -82,40 +86,33 @@ def analyser_image(uploaded_file, api_key, prompt):
     return pd.DataFrame(json.loads(content))
 
 # --- INTERFACE ---
-if 'page' not in st.session_state:
-    st.session_state.page = "Accueil"
-if 'relecture' not in st.session_state:
-    st.session_state.relecture = None
+if 'page' not in st.session_state: st.session_state.page = "Accueil"
+if 'relecture' not in st.session_state: st.session_state.relecture = None
 
-st.markdown('<h1 style="color:#E67E22; text-align:center;">🏗️ GESTION ITB77</h1>', unsafe_allow_html=True)
+st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
     col1, col2 = st.columns([6, 4])
-    
     with col1:
-        st.subheader("📂 Chantiers")
+        st.subheader("Chantiers")
         chantiers = lister_chantiers_github()
-        if not chantiers:
-            st.info("Aucun chantier sur GitHub.")
         for c in chantiers:
-            if st.button(f"🏢 {c}", use_container_width=True):
+            if st.button(f"Chantier {c}", use_container_width=True):
                 st.session_state.page = c
                 st.rerun()
-    
     with col2:
-        st.subheader("+ Nouveau Chantier")
-        nom = st.text_input("Nom du chantier")
-        if st.button("Créer le dossier") and nom:
+        st.subheader("Nouveau Projet")
+        nom = st.text_input("Nom")
+        if st.button("Creer") and nom:
             path = f"{BASE_DIR}/{nom}/{nom}.xlsx"
-            empty_data = {"Béton": pd.DataFrame(columns=COLS_BETON), "Acier": pd.DataFrame(columns=COLS_ACIER)}
-            sauvegarder_excel_github(empty_data, path)
+            data = {"Beton": pd.DataFrame(columns=COLS_BETON), "Acier": pd.DataFrame(columns=COLS_ACIER)}
+            sauvegarder_excel_github(data, path)
             st.session_state.page = nom
             st.rerun()
-
 else:
     nom_c = st.session_state.page
-    st.header(f"📍 {nom_c}")
-    if st.button("⬅️ Retour"):
+    st.header(f"Projet : {nom_c}")
+    if st.button("Retour"):
         st.session_state.page = "Accueil"
         st.session_state.relecture = None
         st.rerun()
@@ -124,42 +121,23 @@ else:
     all_sheets, sha = lire_excel_github(path_file)
     
     if all_sheets:
-        t_beton, t_acier = st.tabs(["Béton", "Acier"])
-
+        t_beton, t_acier = st.tabs(["Beton", "Acier"])
         def zone_scan(onglet, colonnes, prompt):
-            st.subheader(f"Scan {onglet}")
             up = st.file_uploader(f"Photo {onglet}", type=['jpg','png','heic'], key=f"up{onglet}")
-            api_k = st.sidebar.text_input("Clé OpenAI", type="password")
-            
+            api_k = st.sidebar.text_input("Cle OpenAI", type="password")
             if up and api_k and st.session_state.relecture is None:
-                if st.button(f"Lancer l'analyse {onglet}"):
-                    with st.spinner("Analyse en cours..."):
-                        try:
-                            df_res = analyser_image(up, api_k, prompt + f" Colonnes: {colonnes}")
-                            st.session_state.relecture = df_res.reindex(columns=colonnes)
-                            st.rerun()
-                        except Exception:
-                            st.error("Erreur lors de l'analyse.")
-            
+                if st.button(f"Scanner {onglet}"):
+                    res = analyser_image(up, api_k, prompt + f" Colonnes: {colonnes}")
+                    st.session_state.relecture = res.reindex(columns=colonnes)
+                    st.rerun()
             if st.session_state.relecture is not None:
-                st.write("Vérifiez les données :")
-                df_m = st.data_editor(st.session_state.relecture, num_rows="dynamic")
-                if st.button("Enregistrer sur GitHub", type="primary"):
+                df_m = st.data_editor(st.session_state.relecture)
+                if st.button("Enregistrer"):
                     all_sheets[onglet] = pd.concat([all_sheets[onglet], df_m], ignore_index=True)
                     sauvegarder_excel_github(all_sheets, path_file, sha)
                     st.session_state.relecture = None
-                    st.success("Enregistré sur GitHub !")
                     st.rerun()
-                if st.button("Annuler"):
-                    st.session_state.relecture = None
-                    st.rerun()
-
-            st.divider()
             st.dataframe(all_sheets[onglet], use_container_width=True)
 
-        with t_beton:
-            zone_scan("Béton", COLS_BETON, "Extrais les données de béton en JSON.")
-        with t_acier:
-            zone_scan("Acier", COLS_ACIER, "Extrais les données d'acier en JSON.")
-    else:
-        st.error("Impossible de charger le fichier du chantier.")
+        with t_beton: zone_scan("Beton", COLS_BETON, "Donnees beton JSON.")
+        with t_acier: zone_scan("Acier", COLS_ACIER, "Donnees acier JSON.")
