@@ -50,6 +50,7 @@ def sauvegarder_excel_github(file_dict, path, sha=None):
 
 def lister_chantiers():
     try:
+        # On force GitHub à ne pas utiliser de cache pour voir les modifs des autres appareils
         contents = repo.get_contents(BASE_DIR)
         return sorted([c.name for c in contents if c.type == "dir"])
     except: return []
@@ -87,16 +88,24 @@ if 'relecture' not in st.session_state: st.session_state.relecture = None
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
+    # Entête avec bouton d'actualisation pour synchroniser les appareils
+    col_titre, col_refresh = st.columns([8, 2])
+    with col_titre:
+        st.subheader("Mes Projets")
+    with col_refresh:
+        if st.button("🔄 Actualiser", width='stretch'):
+            st.rerun()
+
     c1, c2 = st.columns([6, 4])
     with c1:
-        st.subheader("Mes Projets")
+        # La liste est rafraîchie à chaque chargement de la page d'accueil
         for c in lister_chantiers():
             if st.button(f"🏢 {c}", key=f"sel_{c}", width='stretch'):
                 st.session_state.page = c
                 st.rerun()
     with c2:
         st.subheader("Nouveau")
-        n = st.text_input("Nom du chantier")
+        n = st.text_input("Nom du chantier", key="new_name_sync")
         if st.button("Creer Projet") and n:
             p = f"{BASE_DIR}/{n}/{n}.xlsx"
             try:
@@ -105,6 +114,7 @@ if st.session_state.page == "Accueil":
             except:
                 d = {"Beton": pd.DataFrame(columns=COLS_BETON), "Acier": pd.DataFrame(columns=COLS_ACIER)}
                 sauvegarder_excel_github(d, p)
+            st.success(f"Chantier {n} créé !")
             st.session_state.page = n
             st.rerun()
 
