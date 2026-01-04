@@ -133,7 +133,6 @@ else:
         if df_acier.empty: df_acier = pd.DataFrame(columns=COLS_ACIER)
 
         df_prev = sheets.get("Previsionnel", pd.DataFrame(columns=COLS_PREV))
-        # Sécurité pour les anciens fichiers sans colonne Zone
         if not df_prev.empty and "Zone" not in df_prev.columns:
             df_prev["Zone"] = "INFRA"
         if df_prev.empty: df_prev = pd.DataFrame(columns=COLS_PREV)
@@ -179,8 +178,8 @@ else:
             with col_half:
                 st.subheader("Ajouter un budget")
                 with st.form("ajout_prev"):
-                    st.caption("Astuce : Utilisez le singulier (ex: 'Voile' au lieu de 'Voiles') pour mieux détecter les noms.")
-                    new_des = st.text_input("Désignation (ex: Voile, Dalle)")
+                    st.caption("Astuce : Utilisez le singulier (ex: 'Voile' au lieu de 'Voiles')")
+                    new_des = st.text_input("Désignation")
                     new_vol = st.number_input("Volume Prévu (m3)", step=1.0)
                     new_zone = st.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
                     submitted = st.form_submit_button("Ajouter (+)")
@@ -190,71 +189,79 @@ else:
                         sheets["Previsionnel"] = pd.concat([df_prev, new_row], ignore_index=True)
                         sauvegarder_excel_github(sheets, path_f, sha)
                         st.rerun()
+                        
                 st.divider()
-                st.write("**Budget Existant :**")
-                df_prev_edit = st.data_editor(df_prev, num_rows="dynamic", key="edit_prev", use_container_width=True)
-                if st.button("Sauvegarder Tableau", key="save_prev_tbl"):
-                    sheets["Previsionnel"] = df_prev_edit
+                st.write("**Budget Existant (Cochez pour supprimer) :**")
+                
+                # AJOUT DE LA COLONNE SUPPRIMER POUR L'INTERFACE
+                df_prev_ui = df_prev.copy()
+                df_prev_ui["Supprimer"] = False
+                
+                df_prev_edit = st.data_editor(
+                    df_prev_ui, 
+                    num_rows="dynamic", 
+                    key="edit_prev", 
+                    use_container_width=True,
+                    column_config={
+                        "Supprimer": st.column_config.CheckboxColumn(
+                            "Supprimer ?",
+                            help="Cochez pour supprimer la ligne",
+                            default=False,
+                        )
+                    }
+                )
+                
+                if st.button("Sauvegarder et Supprimer cochés", key="save_prev_tbl"):
+                    # On ne garde que les lignes où Supprimer est FAUX
+                    df_final = df_prev_edit[df_prev_edit["Supprimer"] == False].drop(columns=["Supprimer"])
+                    
+                    sheets["Previsionnel"] = df_final
                     sauvegarder_excel_github(sheets, path_f, sha)
+                    st.success("Mise à jour effectuée !")
                     st.rerun()
 
         with tab4:
-            st.subheader("Bilan consolidé par Famille")
+            st.subheader("Bilan consolidé")
             if not df_prev.empty:
-                # 1. Nettoyage des données
                 df_calc = df_beton.copy()
                 df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce').fillna(0)
                 df_calc["Designation"] = df_calc["Designation"].astype(str).str.lower().str.strip()
 
                 df_target = df_prev.copy()
                 df_target["Prevu (m3)"] = pd.to_numeric(df_target["Prevu (m3)"], errors='coerce').fillna(0)
-                # On s'assure que la Zone est remplie pour tout le monde
                 if "Zone" not in df_target.columns: df_target["Zone"] = "INFRA"
                 df_target["Zone"] = df_target["Zone"].fillna("INFRA")
                 
-                # 2. Algorithme de calcul amélioré
                 df_target["Volume Reel"] = 0.0
                 
-                # On parcourt chaque bon de livraison (Réel)
                 for _, row_reel in df_calc.iterrows():
-                    nom_reel = row_reel["Designation"] # ex: "voile rdc bat a"
+                    nom_reel = row_reel["Designation"]
                     vol_reel = row_reel["Volume (m3)"]
-                    
-                    # On cherche la MEILLEURE catégorie dans le budget
-                    match_found = False
                     for idx_prev, row_prev in df_target.iterrows():
-                        mot_cle = str(row_prev["Designation"]).lower().strip() # ex: "voile"
-                        
-                        # Si le mot clé budget est contenu dans le nom réel
-                        # Ex: "voile" est dans "voile rdc bat a" -> MATCH
+                        mot_cle = str(row_prev["Designation"]).lower().strip()
                         if mot_cle in nom_reel:
                             df_target.at[idx_prev, "Volume Reel"] += vol_reel
-                            match_found = True
-                            break # On arrête de chercher pour ce bon, il est classé.
+                            break 
                 
-                # 3. Affichage
                 for zone_name in ["INFRA", "SUPER"]:
                     st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
                     df_zone = df_target[df_target["Zone"] == zone_name]
-                    
                     if not df_zone.empty:
                         for _, row in df_zone.iterrows():
                             st.markdown(f"### {row['Designation']}")
                             c1, c2, c3 = st.columns(3)
-                            
                             prevu = row['Prevu (m3)']
                             reel = row['Volume Reel']
                             delta = prevu - reel
-                            
                             c1.metric("Budget", f"{prevu:.2f} m³")
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
                             st.divider()
                     else:
-                        st.info(f"Aucune catégorie définie en {zone_name}.")
+                        st.info(f"Aucun élément en {zone_name}.")
                     st.write("") 
             else:
-                st.warning("Veuillez définir vos catégories (Voile, Dalle...) dans l'onglet Prévisionnel.")
+                st.warning("Veuillez définir vos catégories dans l'onglet Prévisionnel.")
                 
     else:
         st.error("Fichier introuvable.")
