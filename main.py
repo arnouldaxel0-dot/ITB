@@ -130,15 +130,18 @@ else:
     sheets, sha = lire_excel_github(path_f)
     
     if sheets is not None:
-        tab1, tab2 = st.tabs(["Beton", "Acier"])
+        # MODIFICATION : Ajout du 3ème onglet Récapitulatif
+        tab1, tab2, tab3 = st.tabs(["Beton", "Acier", "Récapitulatif"])
+        
+        # Préparation des données pour les calculs
+        df_beton = sheets.get("Beton", pd.DataFrame(columns=COLS_BETON))
+        if df_beton.empty: df_beton = pd.DataFrame(columns=COLS_BETON)
+        
+        df_acier = sheets.get("Acier", pd.DataFrame(columns=COLS_ACIER))
+        if df_acier.empty: df_acier = pd.DataFrame(columns=COLS_ACIER)
         
         with tab1:
             up_b = st.file_uploader("Scan Bon Beton", type=['jpg','png','heic'], key="up_b")
-            
-            # Correction : Forcer l'affichage des colonnes même si vide
-            df_beton = sheets.get("Beton", pd.DataFrame(columns=COLS_BETON))
-            if df_beton.empty: df_beton = pd.DataFrame(columns=COLS_BETON)
-
             if up_b and st.session_state.relecture is None:
                 if st.button("Envoyer Bon", key="btn_b", type="primary"):
                     with st.spinner("IA en cours..."):
@@ -157,11 +160,6 @@ else:
 
         with tab2:
             up_a = st.file_uploader("Bon acier", type=['jpg','png','heic'], key="up_a")
-            
-            # Correction : Forcer l'affichage des colonnes même si vide
-            df_acier = sheets.get("Acier", pd.DataFrame(columns=COLS_ACIER))
-            if df_acier.empty: df_acier = pd.DataFrame(columns=COLS_ACIER)
-
             if up_a and st.session_state.relecture is None:
                 if st.button("Envoyer Bon", key="btn_a", type="primary"):
                     with st.spinner("IA en cours..."):
@@ -177,6 +175,25 @@ else:
                     st.rerun()
             st.divider()
             st.dataframe(df_acier, width='stretch')
+            
+        # MODIFICATION : Contenu du 3ème onglet pour les calculs
+        with tab3:
+            st.subheader("Volumes de béton par élément (Désignation)")
+            if not df_beton.empty:
+                # Conversion en numérique pour le calcul
+                df_calc = df_beton.copy()
+                df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce')
+                
+                # Groupement par Désignation
+                recap_beton = df_calc.groupby("Designation")["Volume (m3)"].sum().reset_index()
+                
+                # Affichage des métriques et du tableau
+                c1, c2 = st.columns([1, 2])
+                c1.metric("Total Béton cumulé", f"{df_calc['Volume (m3)'].sum():.2f} m³")
+                st.dataframe(recap_beton, width='stretch', hide_index=True)
+                st.bar_chart(recap_beton.set_index("Designation"))
+            else:
+                st.info("Aucune donnée disponible pour le calcul.")
+
     else:
         st.error("Fichier Excel introuvable ou illisible sur GitHub.")
-
