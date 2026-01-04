@@ -9,27 +9,26 @@ from PIL import Image
 import pillow_heif
 from datetime import datetime
 
-# --- CONFIGURATION GITHUB ---
+# --- 1. CONFIGURATION GITHUB ---
 try:
     GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
     REPO_NAME = st.secrets.get("REPO_NAME", "")
-    
     if GITHUB_TOKEN and REPO_NAME:
         g = Github(GITHUB_TOKEN)
         repo = g.get_repo(REPO_NAME)
     else:
-        st.error("Erreur : GITHUB_TOKEN ou REPO_NAME absent des Secrets.")
+        st.error("Erreur : Configuration GITHUB_TOKEN ou REPO_NAME manquante dans les Secrets.")
 except Exception as e:
-    st.error(f"Erreur de configuration : {e}")
+    st.error(f"Erreur de connexion GitHub : {e}")
 
-# --- CONFIGURATION PROJET ---
+# --- 2. CONFIGURATION PROJET ---
 BASE_DIR = "CHANTIERS_ITB77"
 COLS_BETON = ["Fournisseur", "Designation", "Type de Beton", "Volume (m3)"]
 COLS_ACIER = ["Fournisseur", "Type d Acier", "Designation", "Poids (kg)"]
 
 st.set_page_config(page_title="Scan Pro ITB77", layout="wide")
 
-# --- FONCTIONS GITHUB ---
+# --- 3. FONCTIONS GITHUB ---
 def lire_excel_github(path):
     try:
         content = repo.get_contents(path)
@@ -42,7 +41,6 @@ def sauvegarder_excel_github(file_dict, path, sha=None):
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         for sheet, df in file_dict.items():
             df.to_excel(writer, sheet_name=sheet, index=False)
-    
     content_bytes = output.getvalue()
     if sha:
         repo.update_file(path, "MAJ chantier", content_bytes, sha)
@@ -56,7 +54,7 @@ def lister_chantiers_github():
     except:
         return []
 
-# --- LOGIQUE IA ---
+# --- 4. LOGIQUE IA ---
 def analyser_image(uploaded_file, api_key, prompt):
     file_ext = uploaded_file.name.lower()
     if file_ext.endswith('.heic'):
@@ -84,37 +82,39 @@ def analyser_image(uploaded_file, api_key, prompt):
         content = content.split("```")[1].replace("json", "").strip()
     return pd.DataFrame(json.loads(content))
 
-# --- INTERFACE ---
+# --- 5. INTERFACE ---
 if 'page' not in st.session_state: st.session_state.page = "Accueil"
 if 'relecture' not in st.session_state: st.session_state.relecture = None
 
-# CLE API UNIQUE DANS LA SIDEBAR (Evite l'erreur Duplicate ID)
-api_k = st.sidebar.text_input("Cle OpenAI", type="password")
+# --- CLE OPENAI : UNE SEULE FOIS ICI ---
+st.sidebar.title("Parametres")
+api_k = st.sidebar.text_input("Cle OpenAI", type="password", key="unique_openai_key")
 
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
     col1, col2 = st.columns([6, 4])
     with col1:
-        st.subheader("Chantiers")
+        st.subheader("Mes Chantiers")
         chantiers = lister_chantiers_github()
         for c in chantiers:
-            if st.button(f"Chantier {c}", key=f"btn_{c}", use_container_width=True):
+            if st.button(f"Ouvrir {c}", key=f"btn_{c}", use_container_width=True):
                 st.session_state.page = c
                 st.rerun()
     with col2:
-        st.subheader("Nouveau Projet")
-        nom = st.text_input("Nom")
-        if st.button("Creer") and nom:
+        st.subheader("Nouveau Chantier")
+        nom = st.text_input("Nom du dossier", key="new_chantier_name")
+        if st.button("Creer sur GitHub") and nom:
             path = f"{BASE_DIR}/{nom}/{nom}.xlsx"
             data = {"Beton": pd.DataFrame(columns=COLS_BETON), "Acier": pd.DataFrame(columns=COLS_ACIER)}
             sauvegarder_excel_github(data, path)
             st.session_state.page = nom
             st.rerun()
+
 else:
     nom_c = st.session_state.page
-    st.header(f"Projet : {nom_c}")
-    if st.button("Retour"):
+    st.header(f"Chantier : {nom_c}")
+    if st.button("⬅ Retour Accueil"):
         st.session_state.page = "Accueil"
         st.session_state.relecture = None
         st.rerun()
@@ -123,22 +123,23 @@ else:
     all_sheets, sha = lire_excel_github(path_file)
     
     if all_sheets:
-        t_beton, t_acier = st.tabs(["Beton", "Acier"])
+        t_beton, t_acier = st.tabs(["💧 Beton", "🏗 Acier"])
         
         def zone_scan(onglet, colonnes, prompt):
-            up = st.file_uploader(f"Photo {onglet}", type=['jpg','png','heic'], key=f"up_{onglet}")
+            # Uploader avec clé unique
+            up = st.file_uploader(f"Photo Bon {onglet}", type=['jpg','png','heic'], key=f"file_{onglet}")
             
             if up and api_k and st.session_state.relecture is None:
-                if st.button(f"Scanner {onglet}", key=f"btn_scan_{onglet}"):
-                    with st.spinner("Analyse..."):
+                if st.button(f"Scanner le bon {onglet}", key=f"btn_scan_{onglet}"):
+                    with st.spinner("IA en cours d'analyse..."):
                         res = analyser_image(up, api_k, prompt + f" Colonnes: {colonnes}")
                         st.session_state.relecture = res.reindex(columns=colonnes)
                         st.rerun()
             
             if st.session_state.relecture is not None:
-                st.write("Verifiez les donnees :")
-                df_m = st.data_editor(st.session_state.relecture, key=f"editor_{onglet}")
-                if st.button("Enregistrer", key=f"save_{onglet}"):
+                st.info("Validation des donnees")
+                df_m = st.data_editor(st.session_state.relecture, key=f"edit_{onglet}")
+                if st.button("Confirmer l'enregistrement", key=f"save_{onglet}", type="primary"):
                     all_sheets[onglet] = pd.concat([all_sheets[onglet], df_m], ignore_index=True)
                     sauvegarder_excel_github(all_sheets, path_file, sha)
                     st.session_state.relecture = None
@@ -147,7 +148,9 @@ else:
             st.divider()
             st.dataframe(all_sheets[onglet], use_container_width=True)
 
-        with t_beton: zone_scan("Beton", COLS_BETON, "Donnees beton JSON.")
-        with t_acier: zone_scan("Acier", COLS_ACIER, "Donnees acier JSON.")
+        with t_beton: 
+            zone_scan("Beton", COLS_BETON, "Donnees beton JSON.")
+        with t_acier: 
+            zone_scan("Acier", COLS_ACIER, "Donnees acier JSON.")
     else:
-        st.error("Impossible de charger le fichier.")
+        st.error("Fichier Excel introuvable sur GitHub.")
