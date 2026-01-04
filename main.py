@@ -30,7 +30,6 @@ COLS_BETON = ["Fournisseur", "Designation", "Type de Beton", "Volume (m3)"]
 COLS_ACIER = ["Fournisseur", "Type d Acier", "Designation", "Poids (kg)"]
 COLS_PREV = ["Designation", "Prevu (m3)", "Zone"]
 
-# Titre de l'onglet du navigateur
 st.set_page_config(page_title="Suivi béton", layout="wide")
 
 # --- 3. FONCTIONS ---
@@ -71,7 +70,6 @@ def analyser_ia(uploaded_file, api_key, prompt):
     b64 = base64.b64encode(img_bytes).decode('utf-8')
     headers = {"Authorization": f"Bearer {api_key}"}
     
-    # ON AJOUTE L'INSTRUCTION DU DOUTE AU PROMPT
     prompt_complet = prompt + ". Ajoute une colonne 'Doute' (boolean) : mets true si le texte est difficile à lire, flou ou si tu n'es pas sûr d'un mot. Sinon false."
     
     payload = {
@@ -85,7 +83,6 @@ def analyser_ia(uploaded_file, api_key, prompt):
         if txt.startswith("```"): txt = txt.split("```")[1].replace("json", "").strip()
         return pd.DataFrame(json.loads(txt))
     except:
-        st.error("Erreur lors de l'analyse IA.")
         return pd.DataFrame()
 
 def detecter_zone_automatique(texte):
@@ -167,30 +164,29 @@ else:
             if up_b and st.session_state.relecture is None:
                 if st.button("Envoyer Bon", key="btn_b", type="primary"):
                     with st.spinner("IA en cours..."):
-                        # On demande à l'IA d'ajouter la colonne Doute
                         res = analyser_ia(up_b, OPENAI_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
-                        # On ajoute la colonne Doute à l'affichage temporaire
                         cols_temp = ["Doute"] + COLS_BETON 
                         st.session_state.relecture = res.reindex(columns=cols_temp)
                         st.rerun()
             if st.session_state.relecture is not None:
-                st.info("Cochez ou décochez la case 'Doute' pour vérification.")
+                st.info("Vérifiez les lignes où 'Doute' est coché.")
                 
-                # Configuration de la colonne Doute pour qu'elle s'affiche bien
+                # MODIFICATION : Ajout de disabled=["Doute"]
                 df_m = st.data_editor(
                     st.session_state.relecture, 
                     key="edit_b",
+                    disabled=["Doute"], # Empêche la modification de cette colonne
                     column_config={
                         "Doute": st.column_config.CheckboxColumn(
                             "⚠️ Doute ?",
-                            help="L'IA a coché cette case car elle n'était pas sûre de la lecture.",
+                            help="L'IA a coché cette case car elle n'était pas sûre.",
                             default=False,
+                            width="small" 
                         )
                     }
                 )
                 
                 if st.button("Valider et Sauvegarder", key="save_b"):
-                    # IMPORTANT : On retire la colonne Doute avant de sauvegarder pour garder le fichier propre
                     df_clean = df_m.drop(columns=["Doute"], errors="ignore")
                     sheets["Beton"] = pd.concat([df_beton, df_clean], ignore_index=True)
                     sauvegarder_excel_github(sheets, path_f, sha)
@@ -209,15 +205,18 @@ else:
                         st.session_state.relecture = res.reindex(columns=cols_temp)
                         st.rerun()
             if st.session_state.relecture is not None:
-                st.info("Vérifiez les lignes cochées.")
+                st.info("Vérifiez les lignes où 'Doute' est coché.")
+                # MODIFICATION : Ajout de disabled=["Doute"]
                 df_m = st.data_editor(
                     st.session_state.relecture, 
                     key="edit_a",
+                    disabled=["Doute"], # Empêche la modification de cette colonne
                     column_config={
                         "Doute": st.column_config.CheckboxColumn(
                             "⚠️ Doute ?",
                             help="L'IA a coché cette case car elle n'était pas sûre.",
                             default=False,
+                            width="small"
                         )
                     }
                 )
@@ -262,6 +261,7 @@ else:
                         "Supprimer": st.column_config.CheckboxColumn(
                             "Supprimer ?",
                             default=False,
+                            width="small"
                         )
                     }
                 )
