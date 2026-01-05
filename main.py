@@ -376,7 +376,7 @@ else:
                     if not df_zone_active.empty:
                         for _, row in df_zone_active.iterrows():
                             # MODIFICATION ICI POUR TAILLE ET ECART
-                            st.markdown(f"<div style='font-size: 18px; font-weight: bold; color: #E67E22; margin-bottom: 5px;'>{row['Designation']}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                             
                             c1, c2, c3 = st.columns(3)
                             prevu = row['Prevu (m3)']
@@ -388,7 +388,7 @@ else:
                             c3.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
                             
                             # Ligne de séparation fine au lieu du gros divider
-                            st.markdown("<hr style='margin: 5px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
+                            st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
                     else:
                         st.info(f"Aucun élément actif en {zone_name}.")
                     st.write("") 
@@ -397,3 +397,4 @@ else:
                 
     else:
         st.error("Fichier introuvable.")
+
