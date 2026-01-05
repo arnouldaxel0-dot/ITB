@@ -122,8 +122,6 @@ def detecter_zone_automatique(texte):
 if 'page' not in st.session_state: st.session_state.page = "Accueil"
 if 'relecture' not in st.session_state: st.session_state.relecture = None
 
-# Suppression du sidebar Link
-
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
@@ -287,13 +285,11 @@ else:
                     if rows_to_add:
                         new_standard_df = pd.DataFrame(rows_to_add)
                         df_prev = pd.concat([df_prev, new_standard_df], ignore_index=True)
-                        # On supprime _key pour que ce soit propre
                         if "_key" in df_prev.columns: df_prev = df_prev.drop(columns=["_key"])
                         sheets["Previsionnel"] = df_prev
                         sauvegarder_excel_github(sheets, path_f, sha)
                         st.rerun()
                     
-                    # On nettoie _key si elle traine encore
                     if "_key" in df_prev.columns: df_prev = df_prev.drop(columns=["_key"])
 
                 else:
@@ -311,11 +307,11 @@ else:
                     df_infra,
                     key="edit_infra",
                     use_container_width=True,
-                    disabled=["Designation", "Zone"], # Désignation non modifiable
+                    disabled=["Designation", "Zone"], 
                     hide_index=True,
                     column_config={
                         "Designation": st.column_config.TextColumn("Elément", width="medium"),
-                        "Zone": None, # On cache la colonne zone car c'est déjà trié
+                        "Zone": None, 
                         "Prevu (m3)": st.column_config.NumberColumn("Quantité (m3)", width="small", required=True),
                     }
                 )
@@ -327,7 +323,7 @@ else:
                     df_super,
                     key="edit_super",
                     use_container_width=True,
-                    disabled=["Designation", "Zone"], # Désignation non modifiable
+                    disabled=["Designation", "Zone"], 
                     hide_index=True,
                     column_config={
                         "Designation": st.column_config.TextColumn("Elément", width="medium"),
@@ -337,10 +333,8 @@ else:
                 )
 
                 if st.button("Enregistrer les Quantités", key="save_std_list", type="primary"):
-                    # On recombine tout (Les edits + ce qui n'était ni infra ni super si y'en a)
                     df_others = df_prev[~df_prev["Zone"].isin(["INFRA", "SUPER"])]
                     df_final_prev = pd.concat([edited_infra, edited_super, df_others], ignore_index=True)
-                    
                     sheets["Previsionnel"] = df_final_prev
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.success("Budget mis à jour !")
@@ -377,20 +371,24 @@ else:
                 for zone_name in ["INFRA", "SUPER"]:
                     st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
                     df_zone = df_target[df_target["Zone"] == zone_name]
-                    # On affiche seulement ceux qui ont un budget défini > 0 ou du réel > 0
                     df_zone_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0)]
                     
                     if not df_zone_active.empty:
                         for _, row in df_zone_active.iterrows():
-                            st.markdown(f"### {row['Designation']}")
+                            # MODIFICATION ICI POUR TAILLE ET ECART
+                            st.markdown(f"<div style='font-size: 18px; font-weight: bold; color: #E67E22; margin-bottom: 5px;'>{row['Designation']}</div>", unsafe_allow_html=True)
+                            
                             c1, c2, c3 = st.columns(3)
                             prevu = row['Prevu (m3)']
                             reel = row['Volume Reel']
                             delta = prevu - reel
+                            
                             c1.metric("Budget", f"{prevu:.2f} m³")
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
-                            st.divider()
+                            
+                            # Ligne de séparation fine au lieu du gros divider
+                            st.markdown("<hr style='margin: 5px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
                     else:
                         st.info(f"Aucun élément actif en {zone_name}.")
                     st.write("") 
