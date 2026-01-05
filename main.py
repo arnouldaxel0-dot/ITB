@@ -30,6 +30,24 @@ COLS_BETON = ["Fournisseur", "Designation", "Type de Beton", "Volume (m3)"]
 COLS_ACIER = ["Fournisseur", "Type d Acier", "Designation", "Poids (kg)"]
 COLS_PREV = ["Designation", "Prevu (m3)", "Zone"]
 
+# LISTE STANDARD POUR INITIALISATION
+STANDARD_ITEMS = [
+    {"Designation": "Pieux / Micropieu", "Zone": "INFRA"},
+    {"Designation": "Fondation", "Zone": "INFRA"},
+    {"Designation": "Semelle", "Zone": "INFRA"},
+    {"Designation": "Longrine", "Zone": "INFRA"},
+    {"Designation": "Voile", "Zone": "INFRA"},
+    {"Designation": "Poteau", "Zone": "INFRA"},
+    {"Designation": "Poutre", "Zone": "INFRA"},
+    {"Designation": "Dalle", "Zone": "INFRA"},
+    {"Designation": "Voile", "Zone": "SUPER"},
+    {"Designation": "Poteau", "Zone": "SUPER"},
+    {"Designation": "Poutre", "Zone": "SUPER"},
+    {"Designation": "Dalle", "Zone": "SUPER"},
+    {"Designation": "Acrotère", "Zone": "SUPER"},
+    {"Designation": "Édicule", "Zone": "SUPER"},
+]
+
 st.set_page_config(page_title="Suivi béton", layout="wide")
 
 # --- 3. FONCTIONS ---
@@ -79,6 +97,13 @@ def analyser_ia(uploaded_file, api_key, prompt):
     }
     r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload).json()
     try:
+        # Estimation coût (optionnel, affiché en toast)
+        usage = r.get('usage', {})
+        cout = (usage.get('prompt_tokens', 0) * 0.0000025) + (usage.get('completion_tokens', 0) * 0.000010)
+        st.toast(f"💰 Coût : {cout:.4f} $")
+    except: pass
+
+    try:
         txt = r['choices'][0]['message']['content'].strip()
         if txt.startswith("```"): txt = txt.split("```")[1].replace("json", "").strip()
         return pd.DataFrame(json.loads(txt))
@@ -96,6 +121,11 @@ def detecter_zone_automatique(texte):
 # --- 4. INTERFACE ---
 if 'page' not in st.session_state: st.session_state.page = "Accueil"
 if 'relecture' not in st.session_state: st.session_state.relecture = None
+
+# Sidebar Link
+with st.sidebar:
+    st.markdown("### Liens utiles")
+    st.link_button("💰 Mon Solde OpenAI", "https://platform.openai.com/settings/organization/billing/overview")
 
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
@@ -168,29 +198,20 @@ else:
                         st.session_state.relecture = res.reindex(columns=cols_temp)
                         st.rerun()
             if st.session_state.relecture is not None:
-                st.info("Vérifiez les lignes où '⚠️' est coché.")
-                
-                # --- MODIFICATION POUR LA TAILLE DES COLONNES ---
+                st.info("Vérifiez les lignes.")
                 df_m = st.data_editor(
                     st.session_state.relecture, 
                     key="edit_b",
                     disabled=["Doute"],
-                    use_container_width=True, # On garde ça pour que le tableau soit beau
+                    use_container_width=True,
                     column_config={
-                        "Doute": st.column_config.CheckboxColumn(
-                            "⚠️",
-                            help="L'IA a coché cette case car elle n'était pas sûre.",
-                            default=False,
-                            width="small" # Force au minimum
-                        ),
-                        # On force les autres colonnes à être LARGE pour écraser la colonne Doute
+                        "Doute": st.column_config.CheckboxColumn("⚠️", default=False, width="small"),
                         "Fournisseur": st.column_config.TextColumn("Fournisseur", width="medium"),
                         "Designation": st.column_config.TextColumn("Désignation", width="large"),
                         "Type de Beton": st.column_config.TextColumn("Type de Beton", width="medium"),
                         "Volume (m3)": st.column_config.NumberColumn("Volume (m3)", width="medium"),
                     }
                 )
-                
                 if st.button("Valider et Sauvegarder", key="save_b"):
                     df_clean = df_m.drop(columns=["Doute"], errors="ignore")
                     sheets["Beton"] = pd.concat([df_beton, df_clean], ignore_index=True)
@@ -210,23 +231,15 @@ else:
                         st.session_state.relecture = res.reindex(columns=cols_temp)
                         st.rerun()
             if st.session_state.relecture is not None:
-                st.info("Vérifiez les lignes où '⚠️' est coché.")
-                
-                # --- MODIFICATION POUR LA TAILLE DES COLONNES ACIER ---
+                st.info("Vérifiez les lignes.")
                 df_m = st.data_editor(
                     st.session_state.relecture, 
                     key="edit_a",
                     disabled=["Doute"],
                     use_container_width=True,
                     column_config={
-                        "Doute": st.column_config.CheckboxColumn(
-                            "⚠️",
-                            default=False,
-                            width="small"
-                        ),
-                        # On force les autres à prendre de la place
+                        "Doute": st.column_config.CheckboxColumn("⚠️", default=False, width="small"),
                         "Fournisseur": st.column_config.TextColumn("Fournisseur", width="medium"),
-                        "Type d Acier": st.column_config.TextColumn("Type d Acier", width="medium"),
                         "Designation": st.column_config.TextColumn("Désignation", width="large"),
                         "Poids (kg)": st.column_config.NumberColumn("Poids (kg)", width="medium"),
                     }
@@ -241,11 +254,14 @@ else:
             st.dataframe(df_acier, width='stretch')
 
         with tab3:
-            col_half, col_void = st.columns([1, 1])
-            with col_half:
-                st.subheader("Ajouter un budget")
+            # Layout : Formulaire custom à gauche, Liste Standard à droite (Rectangle Rouge)
+            col_custom, col_standard = st.columns([1, 1])
+            
+            # --- 1. Saisie Manuelle (Optionnelle, à gauche) ---
+            with col_custom:
+                st.subheader("Ajout Personnalisé")
                 with st.form("ajout_prev"):
-                    st.caption("Astuce : Utilisez le singulier (ex: 'Voile' au lieu de 'Voiles')")
+                    st.caption("Pour ajouter un élément hors liste standard.")
                     new_des = st.text_input("Désignation")
                     new_vol = st.number_input("Volume Prévu (m3)", step=1.0)
                     new_zone = st.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
@@ -256,34 +272,64 @@ else:
                         sheets["Previsionnel"] = pd.concat([df_prev, new_row], ignore_index=True)
                         sauvegarder_excel_github(sheets, path_f, sha)
                         st.rerun()
-                        
-                st.divider()
-                st.write("**Budget Existant (Cochez pour supprimer) :**")
+
+            # --- 2. Liste Standard (À droite, remplace le tableau vide) ---
+            with col_standard:
+                st.subheader("Grille de Saisie Standard")
                 
-                df_prev_ui = df_prev.copy()
-                df_prev_ui["Supprimer"] = False
+                # A. Initialisation : On s'assure que les items standards existent dans le tableau
+                if not df_prev.empty:
+                    # On crée une clé unique pour vérifier l'existence (Designation + Zone)
+                    df_prev["_key"] = df_prev["Designation"].astype(str) + "_" + df_prev["Zone"].astype(str)
+                    existing_keys = df_prev["_key"].tolist()
+                    
+                    rows_to_add = []
+                    for item in STANDARD_ITEMS:
+                        key = item["Designation"] + "_" + item["Zone"]
+                        if key not in existing_keys:
+                            # L'item n'existe pas encore, on l'ajoute avec volume 0
+                            rows_to_add.append({"Designation": item["Designation"], "Prevu (m3)": 0.0, "Zone": item["Zone"]})
+                    
+                    if rows_to_add:
+                        new_standard_df = pd.DataFrame(rows_to_add)
+                        df_prev = pd.concat([df_prev, new_standard_df], ignore_index=True)
+                        # Nettoyage colonne temporaire
+                        if "_key" in df_prev.columns: df_prev = df_prev.drop(columns=["_key"])
+                        # Sauvegarde auto pour initialiser le fichier proprement
+                        sheets["Previsionnel"] = df_prev
+                        sauvegarder_excel_github(sheets, path_f, sha)
+                        st.rerun() # On recharge pour afficher la liste propre
+                else:
+                    # Si le fichier est vide, on initialise tout direct
+                    df_prev = pd.DataFrame(STANDARD_ITEMS)
+                    df_prev["Prevu (m3)"] = 0.0
+                    sheets["Previsionnel"] = df_prev
+                    sauvegarder_excel_github(sheets, path_f, sha)
+                    st.rerun()
+
+                # B. Affichage du tableau d'édition
+                # On trie pour avoir INFRA en premier, puis SUPER
+                df_prev["Zone_Sort"] = df_prev["Zone"].map({"INFRA": 1, "SUPER": 2})
+                df_prev = df_prev.sort_values(by=["Zone_Sort", "Designation"]).drop(columns=["Zone_Sort"])
                 
                 df_prev_edit = st.data_editor(
-                    df_prev_ui, 
-                    num_rows="dynamic", 
-                    key="edit_prev", 
+                    df_prev,
+                    num_rows="dynamic", # On laisse dynamic si on veut supprimer des trucs custom
+                    key="edit_prev_std",
                     use_container_width=True,
+                    height=600, # Hauteur fixe pour bien remplir la zone
+                    disabled=["Designation", "Zone"], # ON BLOQUE LE NOM ET LA ZONE pour éviter la casse
                     column_config={
-                        "Supprimer": st.column_config.CheckboxColumn(
-                            "Supprimer ?",
-                            default=False,
-                            width="small"
-                        ),
-                        "Designation": st.column_config.TextColumn("Désignation", width="large"),
-                        "Zone": st.column_config.TextColumn("Zone", width="medium"),
+                        "Designation": st.column_config.TextColumn("Elément", width="medium"),
+                        "Zone": st.column_config.TextColumn("Zone", width="small"),
+                        "Prevu (m3)": st.column_config.NumberColumn("Quantité (m3)", width="small", required=True),
                     }
                 )
-                
-                if st.button("Sauvegarder et Supprimer cochés", key="save_prev_tbl"):
-                    df_final = df_prev_edit[df_prev_edit["Supprimer"] == False].drop(columns=["Supprimer"])
-                    sheets["Previsionnel"] = df_final
+
+                if st.button("Enregistrer les Quantités", key="save_std_list", type="primary"):
+                    sheets["Previsionnel"] = df_prev_edit
                     sauvegarder_excel_github(sheets, path_f, sha)
-                    st.success("Mise à jour effectuée !")
+                    st.success("Budget mis à jour !")
                     st.rerun()
 
         with tab4:
@@ -317,8 +363,11 @@ else:
                 for zone_name in ["INFRA", "SUPER"]:
                     st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
                     df_zone = df_target[df_target["Zone"] == zone_name]
-                    if not df_zone.empty:
-                        for _, row in df_zone.iterrows():
+                    # On affiche seulement ceux qui ont un budget défini > 0 ou du réel > 0
+                    df_zone_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0)]
+                    
+                    if not df_zone_active.empty:
+                        for _, row in df_zone_active.iterrows():
                             st.markdown(f"### {row['Designation']}")
                             c1, c2, c3 = st.columns(3)
                             prevu = row['Prevu (m3)']
@@ -329,10 +378,10 @@ else:
                             c3.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
                             st.divider()
                     else:
-                        st.info(f"Aucun élément budgété en {zone_name}.")
+                        st.info(f"Aucun élément actif en {zone_name}.")
                     st.write("") 
             else:
-                st.warning("Veuillez définir vos catégories dans l'onglet Prévisionnel.")
+                st.warning("Initialisation du budget en cours...")
                 
     else:
         st.error("Fichier introuvable.")
