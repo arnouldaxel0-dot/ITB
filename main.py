@@ -122,10 +122,7 @@ def detecter_zone_automatique(texte):
 if 'page' not in st.session_state: st.session_state.page = "Accueil"
 if 'relecture' not in st.session_state: st.session_state.relecture = None
 
-# Sidebar Link
-with st.sidebar:
-    st.markdown("### Liens utiles")
-    st.link_button("💰 Mon Solde OpenAI", "https://platform.openai.com/settings/organization/billing/overview")
+# Suppression du sidebar Link
 
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
@@ -254,7 +251,6 @@ else:
             st.dataframe(df_acier, width='stretch')
 
         with tab3:
-            # Layout : Formulaire custom à gauche, Liste Standard à droite (Rectangle Rouge)
             col_custom, col_standard = st.columns([1, 1])
             
             # --- 1. Saisie Manuelle (Optionnelle, à gauche) ---
@@ -273,13 +269,12 @@ else:
                         sauvegarder_excel_github(sheets, path_f, sha)
                         st.rerun()
 
-            # --- 2. Liste Standard (À droite, remplace le tableau vide) ---
+            # --- 2. Liste Standard (À droite, avec séparation INFRA / SUPER) ---
             with col_standard:
                 st.subheader("Grille de Saisie Standard")
                 
-                # A. Initialisation : On s'assure que les items standards existent dans le tableau
+                # A. Initialisation et Vérification des items standards
                 if not df_prev.empty:
-                    # On crée une clé unique pour vérifier l'existence (Designation + Zone)
                     df_prev["_key"] = df_prev["Designation"].astype(str) + "_" + df_prev["Zone"].astype(str)
                     existing_keys = df_prev["_key"].tolist()
                     
@@ -287,47 +282,66 @@ else:
                     for item in STANDARD_ITEMS:
                         key = item["Designation"] + "_" + item["Zone"]
                         if key not in existing_keys:
-                            # L'item n'existe pas encore, on l'ajoute avec volume 0
                             rows_to_add.append({"Designation": item["Designation"], "Prevu (m3)": 0.0, "Zone": item["Zone"]})
                     
                     if rows_to_add:
                         new_standard_df = pd.DataFrame(rows_to_add)
                         df_prev = pd.concat([df_prev, new_standard_df], ignore_index=True)
-                        # Nettoyage colonne temporaire
+                        # On supprime _key pour que ce soit propre
                         if "_key" in df_prev.columns: df_prev = df_prev.drop(columns=["_key"])
-                        # Sauvegarde auto pour initialiser le fichier proprement
                         sheets["Previsionnel"] = df_prev
                         sauvegarder_excel_github(sheets, path_f, sha)
-                        st.rerun() # On recharge pour afficher la liste propre
+                        st.rerun()
+                    
+                    # On nettoie _key si elle traine encore
+                    if "_key" in df_prev.columns: df_prev = df_prev.drop(columns=["_key"])
+
                 else:
-                    # Si le fichier est vide, on initialise tout direct
                     df_prev = pd.DataFrame(STANDARD_ITEMS)
                     df_prev["Prevu (m3)"] = 0.0
                     sheets["Previsionnel"] = df_prev
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.rerun()
 
-                # B. Affichage du tableau d'édition
-                # On trie pour avoir INFRA en premier, puis SUPER
-                df_prev["Zone_Sort"] = df_prev["Zone"].map({"INFRA": 1, "SUPER": 2})
-                df_prev = df_prev.sort_values(by=["Zone_Sort", "Designation"]).drop(columns=["Zone_Sort"])
+                # B. Séparation INFRA / SUPER pour l'affichage
+                st.markdown("### INFRA")
+                df_infra = df_prev[df_prev["Zone"] == "INFRA"].sort_values(by="Designation")
                 
-                df_prev_edit = st.data_editor(
-                    df_prev,
-                    num_rows="dynamic", # On laisse dynamic si on veut supprimer des trucs custom
-                    key="edit_prev_std",
+                edited_infra = st.data_editor(
+                    df_infra,
+                    key="edit_infra",
                     use_container_width=True,
-                    height=600, # Hauteur fixe pour bien remplir la zone
-                    disabled=["Designation", "Zone"], # ON BLOQUE LE NOM ET LA ZONE pour éviter la casse
+                    disabled=["Designation", "Zone"], # Désignation non modifiable
+                    hide_index=True,
                     column_config={
                         "Designation": st.column_config.TextColumn("Elément", width="medium"),
-                        "Zone": st.column_config.TextColumn("Zone", width="small"),
+                        "Zone": None, # On cache la colonne zone car c'est déjà trié
+                        "Prevu (m3)": st.column_config.NumberColumn("Quantité (m3)", width="small", required=True),
+                    }
+                )
+
+                st.markdown("### SUPER")
+                df_super = df_prev[df_prev["Zone"] == "SUPER"].sort_values(by="Designation")
+                
+                edited_super = st.data_editor(
+                    df_super,
+                    key="edit_super",
+                    use_container_width=True,
+                    disabled=["Designation", "Zone"], # Désignation non modifiable
+                    hide_index=True,
+                    column_config={
+                        "Designation": st.column_config.TextColumn("Elément", width="medium"),
+                        "Zone": None, 
                         "Prevu (m3)": st.column_config.NumberColumn("Quantité (m3)", width="small", required=True),
                     }
                 )
 
                 if st.button("Enregistrer les Quantités", key="save_std_list", type="primary"):
-                    sheets["Previsionnel"] = df_prev_edit
+                    # On recombine tout (Les edits + ce qui n'était ni infra ni super si y'en a)
+                    df_others = df_prev[~df_prev["Zone"].isin(["INFRA", "SUPER"])]
+                    df_final_prev = pd.concat([edited_infra, edited_super, df_others], ignore_index=True)
+                    
+                    sheets["Previsionnel"] = df_final_prev
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.success("Budget mis à jour !")
                     st.rerun()
