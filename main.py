@@ -4,7 +4,7 @@ import base64
 import requests
 import json
 import io
-import unicodedata # Ajout pour gérer les accents (Béton vs Beton)
+import unicodedata
 from github import Github, Auth
 from PIL import Image
 import pillow_heif
@@ -37,7 +37,6 @@ STANDARD_ITEMS = [
     {"Designation": "Fondation", "Zone": "INFRA"},
     {"Designation": "Semelle", "Zone": "INFRA"},
     {"Designation": "Longrine", "Zone": "INFRA"},
-    {"Designation": "Gros Béton", "Zone": "INFRA"}, # Ajouté pour correspondre à votre cas
     {"Designation": "Voile", "Zone": "INFRA"},
     {"Designation": "Poteau", "Zone": "INFRA"},
     {"Designation": "Poutre", "Zone": "INFRA"},
@@ -111,14 +110,12 @@ def analyser_ia(uploaded_file, api_key, prompt):
     except:
         return pd.DataFrame()
 
-# Nouvelle fonction pour supprimer les accents (Béton -> Beton)
 def remove_accents(input_str):
     if not isinstance(input_str, str): return str(input_str)
     nfkd_form = unicodedata.normalize('NFKD', input_str)
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)])
 
 def detecter_zone_automatique(texte):
-    # On nettoie le texte et les accents pour la détection
     texte = remove_accents(str(texte).lower().strip())
     mots_infra = ["r-", "s-sol", "sous-sol", "fondation", "radier", "pieux", "semelle", "longrine", "infra", "gros beton"]
     for mot in mots_infra:
@@ -126,7 +123,6 @@ def detecter_zone_automatique(texte):
             return "INFRA"
     return "SUPER"
 
-# --- FONCTION DE CORRECTION "DITTO" (U, u, ") ---
 def appliquer_correction_u(df, colonnes_a_verifier):
     for col in colonnes_a_verifier:
         if col in df.columns:
@@ -138,7 +134,6 @@ def appliquer_correction_u(df, colonnes_a_verifier):
     return df
 
 def verifier_correspondance_budget(df_scan, df_budget, col_scan="Designation"):
-    # On crée une bibliothèque normalisée (sans accents, minuscule)
     library = [remove_accents(str(x).strip().lower()) for x in df_budget["Designation"].unique()]
     
     if "Doute" not in df_scan.columns:
@@ -147,7 +142,6 @@ def verifier_correspondance_budget(df_scan, df_budget, col_scan="Designation"):
     termes_inconnus = []
 
     for index, row in df_scan.iterrows():
-        # On nettoie la valeur scannée
         valeur_scan = remove_accents(str(row.get(col_scan, "")).strip().lower())
         valeur_scan_sing = valeur_scan[:-1] if valeur_scan.endswith('s') else valeur_scan
         
@@ -241,10 +235,8 @@ else:
                         cols_temp = ["Doute"] + COLS_BETON 
                         res = res.reindex(columns=cols_temp)
                         
-                        # 1. APPLICATION CORRECTION "u", "U", """ (DITTO)
                         res = appliquer_correction_u(res, ["Designation", "Type de Beton"])
                         
-                        # 2. VERIFICATION TYPE DE BETON
                         res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Type de Beton")
                         st.session_state.termes_inconnus = inconnus
                         
@@ -289,10 +281,8 @@ else:
                         cols_temp = ["Doute"] + COLS_ACIER
                         res = res.reindex(columns=cols_temp)
                         
-                        # 1. APPLICATION CORRECTION "u", "U", """ (DITTO)
                         res = appliquer_correction_u(res, ["Designation"])
-
-                        # 2. VERIFICATION DESIGNATION
+                        
                         res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
                         st.session_state.termes_inconnus = inconnus
 
@@ -417,40 +407,47 @@ else:
         with tab4:
             st.subheader("Bilan consolidé par Zone et Famille")
             if not df_prev.empty:
-                # Préparation du réel
                 df_calc = df_beton.copy()
                 df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce').fillna(0)
                 
-                # Préparation du budget
                 df_target = df_prev.copy()
                 df_target["Prevu (m3)"] = pd.to_numeric(df_target["Prevu (m3)"], errors='coerce').fillna(0)
                 if "Zone" not in df_target.columns: df_target["Zone"] = "INFRA"
                 df_target["Zone"] = df_target["Zone"].fillna("INFRA")
                 df_target["Volume Reel"] = 0.0
                 
-                # BOUCLE DE MATCHING AMÉLIORÉE (CORRECTION ICI)
+                # DICTIONNAIRE POUR STOCKER LES DETAILS FONDATIONS
+                fondation_details = {}
+
                 for _, row_reel in df_calc.iterrows():
                     nom_reel = str(row_reel["Designation"]).strip()
-                    type_reel = str(row_reel.get("Type de Beton", "")).strip() # On récupère aussi le type
+                    type_reel = str(row_reel.get("Type de Beton", "")).strip()
                     vol_reel = row_reel["Volume (m3)"]
                     
-                    # 1. Détection de zone combinée (Designation + Type)
                     texte_pour_zone = nom_reel + " " + type_reel
                     zone_du_bon = detecter_zone_automatique(texte_pour_zone)
                     
-                    # Nettoyage pour comparaison (minuscule + sans accent)
                     nom_reel_clean = remove_accents(nom_reel.lower())
                     type_reel_clean = remove_accents(type_reel.lower())
                     
                     for idx_prev, row_prev in df_target.iterrows():
-                        mot_cle_budget = remove_accents(str(row_prev["Designation"]).strip().lower())
+                        nom_budget_raw = str(row_prev["Designation"]).strip()
+                        mot_cle_budget = remove_accents(nom_budget_raw.lower())
                         zone_budget = row_prev["Zone"]
                         
-                        # Il faut que la ZONE corresponde
                         if zone_du_bon == zone_budget:
-                            # Et que le mot clé soit dans la Désignation OU le Type
+                            # CORRECTION : On vérifie si le mot clé est dans la Désignation OU le Type
                             if mot_cle_budget in nom_reel_clean or mot_cle_budget in type_reel_clean:
                                 df_target.at[idx_prev, "Volume Reel"] += vol_reel
+                                
+                                # --- NOUVEAU : On stocke le détail pour la Fondation ---
+                                if mot_cle_budget == "fondation":
+                                    type_beton_reel = row_reel.get("Type de Beton", "Non spécifié")
+                                    if type_beton_reel not in fondation_details:
+                                        fondation_details[type_beton_reel] = 0.0
+                                    fondation_details[type_beton_reel] += vol_reel
+                                # -------------------------------------------------------
+                                
                                 break 
                 
                 for zone_name in ["INFRA", "SUPER"]:
@@ -460,6 +457,7 @@ else:
                     
                     if not df_zone_active.empty:
                         for _, row in df_zone_active.iterrows():
+                            # Affichage du titre
                             st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                             
                             c1, c2, c3 = st.columns(3)
@@ -471,6 +469,15 @@ else:
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
                             
+                            # --- NOUVEAU : Affichage des détails sous "Fondation" ---
+                            if remove_accents(row['Designation'].lower()) == "fondation" and fondation_details:
+                                with st.expander("👉 Détails par Type de Béton"):
+                                    for type_b, vol_b in fondation_details.items():
+                                        st.markdown(f"<div style='font-size: 14px; color: #aaa; margin-left: 10px;'>• {type_b}</div>", unsafe_allow_html=True)
+                                        ca, cb, cc = st.columns(3)
+                                        cb.metric(label="Réel", value=f"{vol_b:.2f} m³", label_visibility="collapsed")
+                            # --------------------------------------------------------
+
                             st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
                     else:
                         st.info(f"Aucun élément actif en {zone_name}.")
