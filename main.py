@@ -117,13 +117,12 @@ def detecter_zone_automatique(texte):
             return "INFRA"
     return "SUPER"
 
-# --- NOUVELLE FONCTION : COMPARATEUR BIBLIOTHEQUE ---
-def verifier_correspondance_budget(df_scan, df_budget):
+# --- MODIFICATION : AJOUT DU PARAMETRE col_scan ---
+def verifier_correspondance_budget(df_scan, df_budget, col_scan="Designation"):
     """
-    Compare les désignations scannées avec la bibliothèque du budget.
+    Compare la colonne spécifiée (col_scan) du scan avec la bibliothèque du budget.
     Coche la case 'Doute' si aucune correspondance n'est trouvée.
     """
-    # Création de la bibliothèque de référence (minuscule, sans espaces)
     library = df_budget["Designation"].astype(str).str.strip().str.lower().unique().tolist()
     
     if "Doute" not in df_scan.columns:
@@ -132,23 +131,22 @@ def verifier_correspondance_budget(df_scan, df_budget):
     termes_inconnus = []
 
     for index, row in df_scan.iterrows():
-        valeur_scan = str(row["Designation"]).strip().lower()
-        valeur_scan_sing = valeur_scan[:-1] if valeur_scan.endswith('s') else valeur_scan # Gestion pluriel simple
+        # ON UTILISE LA COLONNE SPECIFIEE ICI (ex: "Type de Beton")
+        valeur_scan = str(row.get(col_scan, "")).strip().lower()
+        valeur_scan_sing = valeur_scan[:-1] if valeur_scan.endswith('s') else valeur_scan
         
         match_found = False
         
-        # Comparaison avec la bibliothèque
         for ref in library:
             ref_sing = ref[:-1] if ref.endswith('s') else ref
-            # Si match exact ou match singulier
             if valeur_scan == ref or valeur_scan_sing == ref_sing:
                 match_found = True
                 break
         
-        # Si le mot n'est PAS dans le budget
         if not match_found:
-            df_scan.at[index, "Doute"] = True # On coche la case Doute
-            termes_inconnus.append(row["Designation"])
+            df_scan.at[index, "Doute"] = True
+            # On ajoute le terme de la colonne scannée à la liste des inconnus
+            termes_inconnus.append(row.get(col_scan, "Inconnu"))
             
     return df_scan, termes_inconnus
 
@@ -228,18 +226,17 @@ else:
                         cols_temp = ["Doute"] + COLS_BETON 
                         res = res.reindex(columns=cols_temp)
                         
-                        # --- VERIFICATION BIBLIOTHEQUE ---
-                        res, inconnus = verifier_correspondance_budget(res, df_prev)
+                        # --- MODIFICATION ICI : Appel avec "Type de Beton" ---
+                        res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Type de Beton")
                         st.session_state.termes_inconnus = inconnus
-                        # ---------------------------------
+                        # -----------------------------------------------------
                         
                         st.session_state.relecture = res
                         st.rerun()
                         
             if st.session_state.relecture is not None:
-                # Affichage alerte si termes inconnus
                 if st.session_state.termes_inconnus:
-                    st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
+                    st.warning(f"⚠️ Termes inconnus détectés (Type de Béton) : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
                 else:
                     st.info("Vérifiez les lignes.")
 
@@ -275,10 +272,9 @@ else:
                         cols_temp = ["Doute"] + COLS_ACIER
                         res = res.reindex(columns=cols_temp)
                         
-                        # --- VERIFICATION BIBLIOTHEQUE ---
-                        res, inconnus = verifier_correspondance_budget(res, df_prev)
+                        # Ici on garde "Designation" par défaut car "Type de Beton" n'existe pas pour l'acier
+                        res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
                         st.session_state.termes_inconnus = inconnus
-                        # ---------------------------------
 
                         st.session_state.relecture = res
                         st.rerun()
