@@ -117,12 +117,26 @@ def detecter_zone_automatique(texte):
             return "INFRA"
     return "SUPER"
 
-# --- MODIFICATION : AJOUT DU PARAMETRE col_scan ---
+# --- FONCTION DE CORRECTION "DITTO" (U, u, ") ---
+def appliquer_correction_u(df, colonnes_a_verifier):
+    """
+    Remplace la valeur "u", "U" ou '"' par la valeur de la ligne précédente.
+    """
+    for col in colonnes_a_verifier:
+        if col in df.columns:
+            # On parcourt les lignes de la 2ème à la dernière
+            for i in range(1, len(df)):
+                valeur_actuelle = str(df.at[i, col]).strip()
+                
+                # Liste des déclencheurs explicitement demandés
+                declencheurs = ["u", "U", '"']
+                
+                if valeur_actuelle in declencheurs:
+                    # On prend la valeur de la ligne du dessus
+                    df.at[i, col] = df.at[i-1, col]
+    return df
+
 def verifier_correspondance_budget(df_scan, df_budget, col_scan="Designation"):
-    """
-    Compare la colonne spécifiée (col_scan) du scan avec la bibliothèque du budget.
-    Coche la case 'Doute' si aucune correspondance n'est trouvée.
-    """
     library = df_budget["Designation"].astype(str).str.strip().str.lower().unique().tolist()
     
     if "Doute" not in df_scan.columns:
@@ -131,7 +145,6 @@ def verifier_correspondance_budget(df_scan, df_budget, col_scan="Designation"):
     termes_inconnus = []
 
     for index, row in df_scan.iterrows():
-        # ON UTILISE LA COLONNE SPECIFIEE ICI (ex: "Type de Beton")
         valeur_scan = str(row.get(col_scan, "")).strip().lower()
         valeur_scan_sing = valeur_scan[:-1] if valeur_scan.endswith('s') else valeur_scan
         
@@ -145,7 +158,6 @@ def verifier_correspondance_budget(df_scan, df_budget, col_scan="Designation"):
         
         if not match_found:
             df_scan.at[index, "Doute"] = True
-            # On ajoute le terme de la colonne scannée à la liste des inconnus
             termes_inconnus.append(row.get(col_scan, "Inconnu"))
             
     return df_scan, termes_inconnus
@@ -226,10 +238,12 @@ else:
                         cols_temp = ["Doute"] + COLS_BETON 
                         res = res.reindex(columns=cols_temp)
                         
-                        # --- MODIFICATION ICI : Appel avec "Type de Beton" ---
+                        # 1. APPLICATION CORRECTION "u", "U", """ (DITTO)
+                        res = appliquer_correction_u(res, ["Designation", "Type de Beton"])
+                        
+                        # 2. VERIFICATION TYPE DE BETON (Selon votre demande précédente)
                         res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Type de Beton")
                         st.session_state.termes_inconnus = inconnus
-                        # -----------------------------------------------------
                         
                         st.session_state.relecture = res
                         st.rerun()
@@ -272,7 +286,10 @@ else:
                         cols_temp = ["Doute"] + COLS_ACIER
                         res = res.reindex(columns=cols_temp)
                         
-                        # Ici on garde "Designation" par défaut car "Type de Beton" n'existe pas pour l'acier
+                        # 1. APPLICATION CORRECTION "u", "U", """ (DITTO)
+                        res = appliquer_correction_u(res, ["Designation"])
+
+                        # 2. VERIFICATION DESIGNATION
                         res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
                         st.session_state.termes_inconnus = inconnus
 
