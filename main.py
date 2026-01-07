@@ -97,7 +97,6 @@ def analyser_ia(uploaded_file, api_key, prompt):
     }
     r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload).json()
     try:
-        # Estimation coût (optionnel, affiché en toast)
         usage = r.get('usage', {})
         cout = (usage.get('prompt_tokens', 0) * 0.0000025) + (usage.get('completion_tokens', 0) * 0.000010)
         st.toast(f"💰 Coût : {cout:.4f} $")
@@ -118,9 +117,45 @@ def detecter_zone_automatique(texte):
             return "INFRA"
     return "SUPER"
 
+# --- NOUVELLE FONCTION : COMPARATEUR BIBLIOTHEQUE ---
+def verifier_correspondance_budget(df_scan, df_budget):
+    """
+    Compare les désignations scannées avec la bibliothèque du budget.
+    Coche la case 'Doute' si aucune correspondance n'est trouvée.
+    """
+    # Création de la bibliothèque de référence (minuscule, sans espaces)
+    library = df_budget["Designation"].astype(str).str.strip().str.lower().unique().tolist()
+    
+    if "Doute" not in df_scan.columns:
+        df_scan["Doute"] = False
+
+    termes_inconnus = []
+
+    for index, row in df_scan.iterrows():
+        valeur_scan = str(row["Designation"]).strip().lower()
+        valeur_scan_sing = valeur_scan[:-1] if valeur_scan.endswith('s') else valeur_scan # Gestion pluriel simple
+        
+        match_found = False
+        
+        # Comparaison avec la bibliothèque
+        for ref in library:
+            ref_sing = ref[:-1] if ref.endswith('s') else ref
+            # Si match exact ou match singulier
+            if valeur_scan == ref or valeur_scan_sing == ref_sing:
+                match_found = True
+                break
+        
+        # Si le mot n'est PAS dans le budget
+        if not match_found:
+            df_scan.at[index, "Doute"] = True # On coche la case Doute
+            termes_inconnus.append(row["Designation"])
+            
+    return df_scan, termes_inconnus
+
 # --- 4. INTERFACE ---
 if 'page' not in st.session_state: st.session_state.page = "Accueil"
 if 'relecture' not in st.session_state: st.session_state.relecture = None
+if 'termes_inconnus' not in st.session_state: st.session_state.termes_inconnus = []
 
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
@@ -164,6 +199,7 @@ else:
         if st.button("⬅ Retour", key="back_home", width='stretch'):
             st.session_state.page = "Accueil"
             st.session_state.relecture = None
+            st.session_state.termes_inconnus = []
             st.rerun()
 
     path_f = f"{BASE_DIR}/{nom_c}/{nom_c}.xlsx"
@@ -190,10 +226,23 @@ else:
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_b, OPENAI_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
                         cols_temp = ["Doute"] + COLS_BETON 
-                        st.session_state.relecture = res.reindex(columns=cols_temp)
+                        res = res.reindex(columns=cols_temp)
+                        
+                        # --- VERIFICATION BIBLIOTHEQUE ---
+                        res, inconnus = verifier_correspondance_budget(res, df_prev)
+                        st.session_state.termes_inconnus = inconnus
+                        # ---------------------------------
+                        
+                        st.session_state.relecture = res
                         st.rerun()
+                        
             if st.session_state.relecture is not None:
-                st.info("Vérifiez les lignes.")
+                # Affichage alerte si termes inconnus
+                if st.session_state.termes_inconnus:
+                    st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
+                else:
+                    st.info("Vérifiez les lignes.")
+
                 df_m = st.data_editor(
                     st.session_state.relecture, 
                     key="edit_b",
@@ -212,6 +261,7 @@ else:
                     sheets["Beton"] = pd.concat([df_beton, df_clean], ignore_index=True)
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.session_state.relecture = None
+                    st.session_state.termes_inconnus = []
                     st.rerun()
             st.divider()
             st.dataframe(df_beton, width='stretch')
@@ -223,10 +273,21 @@ else:
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_a, OPENAI_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
                         cols_temp = ["Doute"] + COLS_ACIER
-                        st.session_state.relecture = res.reindex(columns=cols_temp)
+                        res = res.reindex(columns=cols_temp)
+                        
+                        # --- VERIFICATION BIBLIOTHEQUE ---
+                        res, inconnus = verifier_correspondance_budget(res, df_prev)
+                        st.session_state.termes_inconnus = inconnus
+                        # ---------------------------------
+
+                        st.session_state.relecture = res
                         st.rerun()
             if st.session_state.relecture is not None:
-                st.info("Vérifiez les lignes.")
+                if st.session_state.termes_inconnus:
+                    st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
+                else:
+                    st.info("Vérifiez les lignes.")
+                    
                 df_m = st.data_editor(
                     st.session_state.relecture, 
                     key="edit_a",
@@ -244,6 +305,7 @@ else:
                     sheets["Acier"] = pd.concat([df_acier, df_clean], ignore_index=True)
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.session_state.relecture = None
+                    st.session_state.termes_inconnus = []
                     st.rerun()
             st.divider()
             st.dataframe(df_acier, width='stretch')
@@ -251,7 +313,6 @@ else:
         with tab3:
             col_custom, col_standard = st.columns([1, 1])
             
-            # --- 1. Saisie Manuelle (Optionnelle, à gauche) ---
             with col_custom:
                 st.subheader("Ajout Personnalisé")
                 with st.form("ajout_prev"):
@@ -267,11 +328,9 @@ else:
                         sauvegarder_excel_github(sheets, path_f, sha)
                         st.rerun()
 
-            # --- 2. Liste Standard (À droite, avec séparation INFRA / SUPER) ---
             with col_standard:
                 st.subheader("Grille de Saisie Standard")
                 
-                # A. Initialisation et Vérification des items standards
                 if not df_prev.empty:
                     df_prev["_key"] = df_prev["Designation"].astype(str) + "_" + df_prev["Zone"].astype(str)
                     existing_keys = df_prev["_key"].tolist()
@@ -299,7 +358,6 @@ else:
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.rerun()
 
-                # B. Séparation INFRA / SUPER pour l'affichage
                 st.markdown("### INFRA")
                 df_infra = df_prev[df_prev["Zone"] == "INFRA"].sort_values(by="Designation")
                 
@@ -375,7 +433,6 @@ else:
                     
                     if not df_zone_active.empty:
                         for _, row in df_zone_active.iterrows():
-                            # MODIFICATION ICI POUR TAILLE ET ECART
                             st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                             
                             c1, c2, c3 = st.columns(3)
@@ -387,7 +444,6 @@ else:
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
                             
-                            # Ligne de séparation fine au lieu du gros divider
                             st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
                     else:
                         st.info(f"Aucun élément actif en {zone_name}.")
@@ -397,4 +453,3 @@ else:
                 
     else:
         st.error("Fichier introuvable.")
-
