@@ -235,9 +235,11 @@ else:
                         cols_temp = ["Doute"] + COLS_BETON 
                         res = res.reindex(columns=cols_temp)
                         
+                        # 1. APPLICATION CORRECTION "u", "U", """ (DITTO)
                         res = appliquer_correction_u(res, ["Designation", "Type de Beton"])
                         
-                        res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Type de Beton")
+                        # 2. VERIFICATION DESIGNATION (Retour à la normale)
+                        res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
                         st.session_state.termes_inconnus = inconnus
                         
                         st.session_state.relecture = res
@@ -245,7 +247,7 @@ else:
                         
             if st.session_state.relecture is not None:
                 if st.session_state.termes_inconnus:
-                    st.warning(f"⚠️ Termes inconnus détectés (Type de Béton) : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
+                    st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
                 else:
                     st.info("Vérifiez les lignes.")
 
@@ -281,8 +283,10 @@ else:
                         cols_temp = ["Doute"] + COLS_ACIER
                         res = res.reindex(columns=cols_temp)
                         
+                        # 1. APPLICATION CORRECTION "u", "U", """ (DITTO)
                         res = appliquer_correction_u(res, ["Designation"])
-                        
+
+                        # 2. VERIFICATION DESIGNATION
                         res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
                         st.session_state.termes_inconnus = inconnus
 
@@ -416,7 +420,6 @@ else:
                 df_target["Zone"] = df_target["Zone"].fillna("INFRA")
                 df_target["Volume Reel"] = 0.0
                 
-                # DICTIONNAIRE POUR STOCKER LES DETAILS FONDATIONS
                 fondation_details = {}
 
                 for _, row_reel in df_calc.iterrows():
@@ -436,17 +439,14 @@ else:
                         zone_budget = row_prev["Zone"]
                         
                         if zone_du_bon == zone_budget:
-                            # CORRECTION : On vérifie si le mot clé est dans la Désignation OU le Type
                             if mot_cle_budget in nom_reel_clean or mot_cle_budget in type_reel_clean:
                                 df_target.at[idx_prev, "Volume Reel"] += vol_reel
                                 
-                                # --- NOUVEAU : On stocke le détail pour la Fondation ---
                                 if mot_cle_budget == "fondation":
                                     type_beton_reel = row_reel.get("Type de Beton", "Non spécifié")
                                     if type_beton_reel not in fondation_details:
                                         fondation_details[type_beton_reel] = 0.0
                                     fondation_details[type_beton_reel] += vol_reel
-                                # -------------------------------------------------------
                                 
                                 break 
                 
@@ -457,7 +457,6 @@ else:
                     
                     if not df_zone_active.empty:
                         for _, row in df_zone_active.iterrows():
-                            # Affichage du titre
                             st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                             
                             c1, c2, c3 = st.columns(3)
@@ -469,14 +468,12 @@ else:
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
                             
-                            # --- NOUVEAU : Affichage des détails sous "Fondation" ---
                             if remove_accents(row['Designation'].lower()) == "fondation" and fondation_details:
                                 with st.expander("👉 Détails par Type de Béton"):
                                     for type_b, vol_b in fondation_details.items():
                                         st.markdown(f"<div style='font-size: 14px; color: #aaa; margin-left: 10px;'>• {type_b}</div>", unsafe_allow_html=True)
                                         ca, cb, cc = st.columns(3)
                                         cb.metric(label="Réel", value=f"{vol_b:.2f} m³", label_visibility="collapsed")
-                            # --------------------------------------------------------
 
                             st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
                     else:
