@@ -30,7 +30,7 @@ BASE_DIR = "CHANTIERS_ITB77"
 COLS_BETON = ["Fournisseur", "Designation", "Type de Beton", "Volume (m3)"]
 COLS_ACIER = ["Fournisseur", "Type d Acier", "Designation", "Poids (kg)"]
 COLS_PREV = ["Designation", "Prevu (m3)", "Zone"]
-COLS_ETUDE_ACIER = ["Designation", "Acier HA", "Acier TS", "Zone"] # Nouvelle structure pour l'acier en étude
+COLS_ETUDE_ACIER = ["Designation", "Acier HA", "Acier TS", "Zone"]
 
 # LISTE STANDARD POUR INITIALISATION
 STANDARD_ITEMS = [
@@ -220,7 +220,6 @@ else:
     sheets, sha = lire_excel_github(path_f)
     
     if sheets is not None:
-        # AJOUT DE L'ONGLET ETUDE
         tab1, tab2, tab3, tab_etude, tab4 = st.tabs(["Beton", "Acier", "Prévisionnel", "Étude", "Récapitulatif"])
         
         df_beton = sheets.get("Beton", pd.DataFrame(columns=COLS_BETON))
@@ -234,7 +233,6 @@ else:
             df_prev["Zone"] = "INFRA"
         if df_prev.empty: df_prev = pd.DataFrame(columns=COLS_PREV)
 
-        # Chargement des données Etude
         df_etude_beton = sheets.get("Etude_Beton", pd.DataFrame(columns=["Designation", "Etude (m3)", "Zone"]))
         df_etude_acier = sheets.get("Etude_Acier", pd.DataFrame(columns=COLS_ETUDE_ACIER))
         
@@ -388,25 +386,17 @@ else:
                     st.success("Budget mis à jour !")
                     st.rerun()
 
-        # --- NOUVEL ONGLET : ÉTUDE ---
         with tab_etude:
             col_b, col_a = st.columns(2)
-            
-            # --- Partie Béton (Gauche) ---
             with col_b:
                 st.markdown("### 🧱 Étude Béton")
                 st.caption("Reprise des désignations du Prévisionnel")
-                
-                # On synchronise avec le prévisionnel : on récupère les libellés
-                # On merge pour garder les valeurs déjà saisies dans l'étude si elles existent
                 df_merge_beton = pd.merge(
                     df_prev[["Designation", "Zone"]], 
                     df_etude_beton, 
                     on=["Designation", "Zone"], 
                     how="left"
                 ).fillna(0.0)
-                
-                # Affichage tableau
                 edited_etude_beton = st.data_editor(
                     df_merge_beton,
                     key="edit_etude_beton",
@@ -419,17 +409,13 @@ else:
                         "Etude (m3)": st.column_config.NumberColumn("Quantité (m3)", required=True)
                     }
                 )
-                
                 if st.button("Sauvegarder Étude Béton", key="save_etude_beton"):
                     sheets["Etude_Beton"] = edited_etude_beton
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.success("Données Béton sauvegardées")
 
-            # --- Partie Acier (Droite) ---
             with col_a:
                 st.markdown("### ⛓️ Étude Acier")
-                
-                # Tableau Acier
                 edited_etude_acier = st.data_editor(
                     df_etude_acier,
                     key="edit_etude_acier",
@@ -442,18 +428,14 @@ else:
                         "Zone": st.column_config.SelectboxColumn("Zone", options=["INFRA", "SUPER"], width="small")
                     }
                 )
-                
-                # Formulaire d'ajout Acier (Identique fonctionnel à Prévisionnel)
                 with st.form("ajout_etude_acier"):
                     st.write("Ajouter une ligne Acier")
                     c_form1, c_form2 = st.columns(2)
                     new_des_a = c_form1.text_input("Désignation")
                     new_zone_a = c_form2.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
-                    
                     c_form3, c_form4 = st.columns(2)
                     new_ha = c_form3.number_input("Poids HA (kg)", step=1.0)
                     new_ts = c_form4.number_input("Poids TS (kg)", step=1.0)
-                    
                     if st.form_submit_button("Ajouter (+)") and new_des_a:
                         new_row_a = pd.DataFrame([{
                             "Designation": new_des_a, 
@@ -465,8 +447,6 @@ else:
                         sheets["Etude_Acier"] = df_etude_acier
                         sauvegarder_excel_github(sheets, path_f, sha)
                         st.rerun()
-
-                # Bouton de sauvegarde global pour le tableau acier (modifs directes)
                 if st.button("Sauvegarder Tableau Acier", key="save_etude_acier_global"):
                     sheets["Etude_Acier"] = edited_etude_acier
                     sauvegarder_excel_github(sheets, path_f, sha)
@@ -484,7 +464,6 @@ else:
                 df_target["Zone"] = df_target["Zone"].fillna("INFRA")
                 df_target["Volume Reel"] = 0.0
                 
-                # On prépare les données Étude pour la fusion
                 df_etude_val = df_etude_beton.copy()
                 if not df_etude_val.empty and "Etude (m3)" in df_etude_val.columns:
                     df_etude_val["Etude (m3)"] = pd.to_numeric(df_etude_val["Etude (m3)"], errors='coerce').fillna(0)
@@ -518,10 +497,8 @@ else:
                                     if type_beton_reel not in fondation_details:
                                         fondation_details[type_beton_reel] = 0.0
                                     fondation_details[type_beton_reel] += vol_reel
-                                
                                 break 
                 
-                # FUSION avec les données ETUDE
                 df_target = pd.merge(df_target, df_etude_val[["Designation", "Zone", "Etude (m3)"]], on=["Designation", "Zone"], how="left").fillna(0)
 
                 for zone_name in ["INFRA", "SUPER"]:
@@ -531,24 +508,35 @@ else:
                     
                     if not df_zone_active.empty:
                         for _, row in df_zone_active.iterrows():
+                            # TITRE DESIGNATION
                             st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                             
-                            # 5 COLONNES COMME DEMANDÉ
-                            c1, c2, c3, c4, c5 = st.columns(5)
+                            # MISE EN PAGE AVEC SEPARATEUR ET LIGNE BLEUE
+                            col_left, col_sep, col_right = st.columns([6, 1, 4])
                             
                             prevu = row['Prevu (m3)']
                             reel = row['Volume Reel']
                             etude_val = row.get('Etude (m3)', 0.0)
                             delta = prevu - reel
-                            
-                            # Calcul pourcentage
                             pct = (reel / prevu * 100) if prevu > 0 else 0.0
                             
-                            c1.metric("Budget", f"{prevu:.2f} m³")
-                            c2.metric("Consommé", f"{reel:.2f} m³")
-                            c3.metric("Étude", f"{etude_val:.2f} m³") # Nouvelle colonne Etude
-                            c4.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
-                            c5.metric("Avancement", f"{pct:.1f} %") # Nouvelle colonne %
+                            # BLOC GAUCHE (Quantités)
+                            with col_left:
+                                c1, c2, c3 = st.columns(3)
+                                c1.metric("Budget", f"{prevu:.2f} m³")
+                                c2.metric("Consommé", f"{reel:.2f} m³")
+                                c3.metric("Étude", f"{etude_val:.2f} m³")
+                            
+                            # BLOC MILIEU (Barre orange verticale)
+                            with col_sep:
+                                st.markdown("""<div style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
+                            
+                            # BLOC DROIT (Analyse + Ligne Bleue)
+                            with col_right:
+                                st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
+                                c4, c5 = st.columns(2)
+                                c4.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
+                                c5.metric("Avancement", f"{pct:.1f} %")
                             
                             if remove_accents(row['Designation'].lower()) == "fondation" and fondation_details:
                                 with st.expander("👉 Détails par Type de Béton"):
