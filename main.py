@@ -508,10 +508,8 @@ else:
                     
                     if not df_zone_active.empty:
                         for _, row in df_zone_active.iterrows():
-                            # TITRE DESIGNATION
                             st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                             
-                            # MISE EN PAGE AVEC SEPARATEUR ET LIGNE BLEUE
                             col_left, col_sep, col_right = st.columns([6, 1, 4])
                             
                             prevu = row['Prevu (m3)']
@@ -520,22 +518,19 @@ else:
                             delta = prevu - reel
                             pct = (reel / prevu * 100) if prevu > 0 else 0.0
                             
-                            # BLOC GAUCHE (Quantités)
                             with col_left:
                                 c1, c2, c3 = st.columns(3)
                                 c1.metric("Budget", f"{prevu:.2f} m³")
                                 c2.metric("Consommé", f"{reel:.2f} m³")
                                 c3.metric("Étude", f"{etude_val:.2f} m³")
                             
-                            # BLOC MILIEU (Barre orange verticale)
                             with col_sep:
-                                st.markdown("""<div style="border-left: 4px solid #E67E22; height: 100px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
+                                st.markdown("""<div style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
                             
-                            # BLOC DROIT (Analyse + Ligne Bleue)
                             with col_right:
                                 st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
                                 c4, c5 = st.columns(2)
-                                c4.metric("Reste", f"{delta:.2f} m³", delta=f"{delta:.2f} m³", delta_color="normal")
+                                c4.metric("Reste", f"{delta:.2f} m³")
                                 c5.metric("Avancement", f"{pct:.1f} %")
                             
                             if remove_accents(row['Designation'].lower()) == "fondation" and fondation_details:
@@ -554,4 +549,3 @@ else:
                 
     else:
         st.error("Fichier introuvable.")
-
