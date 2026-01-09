@@ -220,8 +220,10 @@ else:
     sheets, sha = lire_excel_github(path_f)
     
     if sheets is not None:
-        tab1, tab2, tab3, tab_etude, tab4 = st.tabs(["Beton", "Acier", "Prévisionnel", "Étude", "Récapitulatif"])
+        # NOUVEL ORDRE DES ONGLETS
+        tab_recap, tab_beton, tab_acier, tab_prev, tab_etude = st.tabs(["Récapitulatif", "Béton", "Acier", "Prévisionnel", "Étude"])
         
+        # CHARGEMENT DES DONNÉES
         df_beton = sheets.get("Beton", pd.DataFrame(columns=COLS_BETON))
         if df_beton.empty: df_beton = pd.DataFrame(columns=COLS_BETON)
         
@@ -235,224 +237,9 @@ else:
 
         df_etude_beton = sheets.get("Etude_Beton", pd.DataFrame(columns=["Designation", "Etude (m3)", "Zone"]))
         df_etude_acier = sheets.get("Etude_Acier", pd.DataFrame(columns=COLS_ETUDE_ACIER))
-        
-        with tab1:
-            up_b = st.file_uploader("Scan Bon Beton", type=['jpg','png','heic'], key="up_b")
-            if up_b and st.session_state.relecture is None:
-                if st.button("Envoyer Bon", key="btn_b", type="primary"):
-                    with st.spinner("IA en cours..."):
-                        res = analyser_ia(up_b, OPENAI_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
-                        cols_temp = ["Doute"] + COLS_BETON 
-                        res = res.reindex(columns=cols_temp)
-                        res = appliquer_correction_u(res, ["Designation", "Type de Beton"])
-                        res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
-                        st.session_state.termes_inconnus = inconnus
-                        st.session_state.relecture = res
-                        st.rerun()
-                        
-            if st.session_state.relecture is not None:
-                if st.session_state.termes_inconnus:
-                    st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
-                else:
-                    st.info("Vérifiez les lignes.")
 
-                df_m = st.data_editor(
-                    st.session_state.relecture, 
-                    key="edit_b",
-                    disabled=["Doute"],
-                    use_container_width=True,
-                    column_config={
-                        "Doute": st.column_config.CheckboxColumn("⚠️", default=False, width="small"),
-                        "Fournisseur": st.column_config.TextColumn("Fournisseur", width="medium"),
-                        "Designation": st.column_config.TextColumn("Désignation", width="large"),
-                        "Type de Beton": st.column_config.TextColumn("Type de Beton", width="medium"),
-                        "Volume (m3)": st.column_config.NumberColumn("Volume (m3)", width="medium"),
-                    }
-                )
-                if st.button("Valider et Sauvegarder", key="save_b"):
-                    df_clean = df_m.drop(columns=["Doute"], errors="ignore")
-                    sheets["Beton"] = pd.concat([df_beton, df_clean], ignore_index=True)
-                    sauvegarder_excel_github(sheets, path_f, sha)
-                    st.session_state.relecture = None
-                    st.session_state.termes_inconnus = []
-                    st.rerun()
-            st.divider()
-            st.dataframe(df_beton, width='stretch')
-
-        with tab2:
-            up_a = st.file_uploader("Bon acier", type=['jpg','png','heic'], key="up_a")
-            if up_a and st.session_state.relecture is None:
-                if st.button("Envoyer Bon", key="btn_a", type="primary"):
-                    with st.spinner("IA en cours..."):
-                        res = analyser_ia(up_a, OPENAI_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
-                        cols_temp = ["Doute"] + COLS_ACIER
-                        res = res.reindex(columns=cols_temp)
-                        res = appliquer_correction_u(res, ["Designation"])
-                        res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
-                        st.session_state.termes_inconnus = inconnus
-                        st.session_state.relecture = res
-                        st.rerun()
-            if st.session_state.relecture is not None:
-                if st.session_state.termes_inconnus:
-                    st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
-                else:
-                    st.info("Vérifiez les lignes.")
-                    
-                df_m = st.data_editor(
-                    st.session_state.relecture, 
-                    key="edit_a",
-                    disabled=["Doute"],
-                    use_container_width=True,
-                    column_config={
-                        "Doute": st.column_config.CheckboxColumn("⚠️", default=False, width="small"),
-                        "Fournisseur": st.column_config.TextColumn("Fournisseur", width="medium"),
-                        "Designation": st.column_config.TextColumn("Désignation", width="large"),
-                        "Poids (kg)": st.column_config.NumberColumn("Poids (kg)", width="medium"),
-                    }
-                )
-                if st.button("Valider et Sauvegarder", key="save_a"):
-                    df_clean = df_m.drop(columns=["Doute"], errors="ignore")
-                    sheets["Acier"] = pd.concat([df_acier, df_clean], ignore_index=True)
-                    sauvegarder_excel_github(sheets, path_f, sha)
-                    st.session_state.relecture = None
-                    st.session_state.termes_inconnus = []
-                    st.rerun()
-            st.divider()
-            st.dataframe(df_acier, width='stretch')
-
-        with tab3:
-            col_custom, col_standard = st.columns([1, 1])
-            
-            with col_custom:
-                st.subheader("Ajout Personnalisé")
-                with st.form("ajout_prev"):
-                    st.caption("Pour ajouter un élément hors liste standard.")
-                    new_des = st.text_input("Désignation")
-                    new_vol = st.number_input("Volume Prévu (m3)", step=1.0)
-                    new_zone = st.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
-                    submitted = st.form_submit_button("Ajouter (+)")
-                    
-                    if submitted and new_des:
-                        new_row = pd.DataFrame([{"Designation": new_des, "Prevu (m3)": new_vol, "Zone": new_zone}])
-                        sheets["Previsionnel"] = pd.concat([df_prev, new_row], ignore_index=True)
-                        sauvegarder_excel_github(sheets, path_f, sha)
-                        st.rerun()
-
-            with col_standard:
-                st.subheader("Grille de Saisie Standard")
-                
-                if not df_prev.empty:
-                    df_prev["_key"] = df_prev["Designation"].astype(str) + "_" + df_prev["Zone"].astype(str)
-                    existing_keys = df_prev["_key"].tolist()
-                    rows_to_add = []
-                    for item in STANDARD_ITEMS:
-                        key = item["Designation"] + "_" + item["Zone"]
-                        if key not in existing_keys:
-                            rows_to_add.append({"Designation": item["Designation"], "Prevu (m3)": 0.0, "Zone": item["Zone"]})
-                    if rows_to_add:
-                        new_standard_df = pd.DataFrame(rows_to_add)
-                        df_prev = pd.concat([df_prev, new_standard_df], ignore_index=True)
-                        if "_key" in df_prev.columns: df_prev = df_prev.drop(columns=["_key"])
-                        sheets["Previsionnel"] = df_prev
-                        sauvegarder_excel_github(sheets, path_f, sha)
-                        st.rerun()
-                    if "_key" in df_prev.columns: df_prev = df_prev.drop(columns=["_key"])
-                else:
-                    df_prev = pd.DataFrame(STANDARD_ITEMS)
-                    df_prev["Prevu (m3)"] = 0.0
-                    sheets["Previsionnel"] = df_prev
-                    sauvegarder_excel_github(sheets, path_f, sha)
-                    st.rerun()
-
-                st.markdown("### INFRA")
-                df_infra = df_prev[df_prev["Zone"] == "INFRA"].sort_values(by="Designation")
-                edited_infra = st.data_editor(
-                    df_infra, key="edit_infra", use_container_width=True, disabled=["Designation", "Zone"], hide_index=True,
-                    column_config={"Designation": st.column_config.TextColumn("Elément", width="medium"), "Zone": None, "Prevu (m3)": st.column_config.NumberColumn("Quantité (m3)", width="small", required=True)}
-                )
-
-                st.markdown("### SUPER")
-                df_super = df_prev[df_prev["Zone"] == "SUPER"].sort_values(by="Designation")
-                edited_super = st.data_editor(
-                    df_super, key="edit_super", use_container_width=True, disabled=["Designation", "Zone"], hide_index=True,
-                    column_config={"Designation": st.column_config.TextColumn("Elément", width="medium"), "Zone": None, "Prevu (m3)": st.column_config.NumberColumn("Quantité (m3)", width="small", required=True)}
-                )
-
-                if st.button("Enregistrer les Quantités", key="save_std_list", type="primary"):
-                    df_others = df_prev[~df_prev["Zone"].isin(["INFRA", "SUPER"])]
-                    df_final_prev = pd.concat([edited_infra, edited_super, df_others], ignore_index=True)
-                    sheets["Previsionnel"] = df_final_prev
-                    sauvegarder_excel_github(sheets, path_f, sha)
-                    st.success("Budget mis à jour !")
-                    st.rerun()
-
-        with tab_etude:
-            col_b, col_a = st.columns(2)
-            with col_b:
-                st.markdown("### 🧱 Étude Béton")
-                st.caption("Reprise des désignations du Prévisionnel")
-                df_merge_beton = pd.merge(
-                    df_prev[["Designation", "Zone"]], 
-                    df_etude_beton, 
-                    on=["Designation", "Zone"], 
-                    how="left"
-                ).fillna(0.0)
-                edited_etude_beton = st.data_editor(
-                    df_merge_beton,
-                    key="edit_etude_beton",
-                    use_container_width=True,
-                    disabled=["Designation", "Zone"],
-                    hide_index=True,
-                    column_config={
-                        "Designation": st.column_config.TextColumn("Désignation", width="medium"),
-                        "Zone": st.column_config.TextColumn("Zone", width="small"),
-                        "Etude (m3)": st.column_config.NumberColumn("Quantité (m3)", required=True)
-                    }
-                )
-                if st.button("Sauvegarder Étude Béton", key="save_etude_beton"):
-                    sheets["Etude_Beton"] = edited_etude_beton
-                    sauvegarder_excel_github(sheets, path_f, sha)
-                    st.success("Données Béton sauvegardées")
-
-            with col_a:
-                st.markdown("### ⛓️ Étude Acier")
-                edited_etude_acier = st.data_editor(
-                    df_etude_acier,
-                    key="edit_etude_acier",
-                    num_rows="dynamic",
-                    use_container_width=True,
-                    column_config={
-                        "Designation": st.column_config.TextColumn("Désignation", width="medium"),
-                        "Acier HA": st.column_config.NumberColumn("Acier HA (kg)", required=True),
-                        "Acier TS": st.column_config.NumberColumn("Acier TS (kg)", required=True),
-                        "Zone": st.column_config.SelectboxColumn("Zone", options=["INFRA", "SUPER"], width="small")
-                    }
-                )
-                with st.form("ajout_etude_acier"):
-                    st.write("Ajouter une ligne Acier")
-                    c_form1, c_form2 = st.columns(2)
-                    new_des_a = c_form1.text_input("Désignation")
-                    new_zone_a = c_form2.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
-                    c_form3, c_form4 = st.columns(2)
-                    new_ha = c_form3.number_input("Poids HA (kg)", step=1.0)
-                    new_ts = c_form4.number_input("Poids TS (kg)", step=1.0)
-                    if st.form_submit_button("Ajouter (+)") and new_des_a:
-                        new_row_a = pd.DataFrame([{
-                            "Designation": new_des_a, 
-                            "Acier HA": new_ha, 
-                            "Acier TS": new_ts, 
-                            "Zone": new_zone_a
-                        }])
-                        df_etude_acier = pd.concat([edited_etude_acier, new_row_a], ignore_index=True)
-                        sheets["Etude_Acier"] = df_etude_acier
-                        sauvegarder_excel_github(sheets, path_f, sha)
-                        st.rerun()
-                if st.button("Sauvegarder Tableau Acier", key="save_etude_acier_global"):
-                    sheets["Etude_Acier"] = edited_etude_acier
-                    sauvegarder_excel_github(sheets, path_f, sha)
-                    st.success("Données Acier sauvegardées")
-
-        with tab4:
+        # --- 1. RÉCAPITULATIF (Désormais en premier) ---
+        with tab_recap:
             st.subheader("Bilan consolidé par Zone et Famille")
             if not df_prev.empty:
                 df_calc = df_beton.copy()
@@ -519,34 +306,19 @@ else:
                             with col_sep:
                                 st.markdown("""<div style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
                             
-                            # LOGIQUE COULEUR ROUGE SI DEPASSEMENT
                             if delta < 0:
-                                color_reste = "#FF4B4B" # Rouge
-                                color_pct = "#FF4B4B"   # Rouge
+                                color_reste = "#FF4B4B"
+                                color_pct = "#FF4B4B"
                             else:
-                                color_reste = "inherit" # Couleur par défaut
+                                color_reste = "inherit"
                                 color_pct = "inherit"
 
                             with col_right:
                                 st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
                                 c4, c5 = st.columns(2)
-                                
-                                # HTML pour "Reste" en ROUGE si négatif
-                                html_reste = f"""
-                                <div style="font-family: 'Source Sans Pro', sans-serif;">
-                                    <div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div>
-                                    <div style="font-size: 24px; font-weight: 600; color: {color_reste};">{delta:.2f} m³</div>
-                                </div>
-                                """
+                                html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 24px; font-weight: 600; color: {color_reste};">{delta:.2f} m³</div></div>"""
                                 c4.markdown(html_reste, unsafe_allow_html=True)
-                                
-                                # HTML pour "Avancement" en ROUGE si dépassement
-                                html_pct = f"""
-                                <div style="font-family: 'Source Sans Pro', sans-serif;">
-                                    <div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div>
-                                    <div style="font-size: 24px; font-weight: 600; color: {color_pct};">{pct:.1f} %</div>
-                                </div>
-                                """
+                                html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 24px; font-weight: 600; color: {color_pct};">{pct:.1f} %</div></div>"""
                                 c5.markdown(html_pct, unsafe_allow_html=True)
 
                             st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
@@ -555,6 +327,226 @@ else:
                     st.write("") 
             else:
                 st.warning("Initialisation du budget en cours...")
+
+        # --- 2. BÉTON ---
+        with tab_beton:
+            up_b = st.file_uploader("Scan Bon Beton", type=['jpg','png','heic'], key="up_b")
+            if up_b and st.session_state.relecture is None:
+                if st.button("Envoyer Bon", key="btn_b", type="primary"):
+                    with st.spinner("IA en cours..."):
+                        res = analyser_ia(up_b, OPENAI_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
+                        cols_temp = ["Doute"] + COLS_BETON 
+                        res = res.reindex(columns=cols_temp)
+                        res = appliquer_correction_u(res, ["Designation", "Type de Beton"])
+                        res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
+                        st.session_state.termes_inconnus = inconnus
+                        st.session_state.relecture = res
+                        st.rerun()
+                        
+            if st.session_state.relecture is not None:
+                if st.session_state.termes_inconnus:
+                    st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
+                else:
+                    st.info("Vérifiez les lignes.")
+
+                df_m = st.data_editor(
+                    st.session_state.relecture, 
+                    key="edit_b",
+                    disabled=["Doute"],
+                    use_container_width=True,
+                    column_config={
+                        "Doute": st.column_config.CheckboxColumn("⚠️", default=False, width="small"),
+                        "Fournisseur": st.column_config.TextColumn("Fournisseur", width="medium"),
+                        "Designation": st.column_config.TextColumn("Désignation", width="large"),
+                        "Type de Beton": st.column_config.TextColumn("Type de Beton", width="medium"),
+                        "Volume (m3)": st.column_config.NumberColumn("Volume (m3)", width="medium"),
+                    }
+                )
+                if st.button("Valider et Sauvegarder", key="save_b"):
+                    df_clean = df_m.drop(columns=["Doute"], errors="ignore")
+                    sheets["Beton"] = pd.concat([df_beton, df_clean], ignore_index=True)
+                    sauvegarder_excel_github(sheets, path_f, sha)
+                    st.session_state.relecture = None
+                    st.session_state.termes_inconnus = []
+                    st.rerun()
+            st.divider()
+            st.dataframe(df_beton, width='stretch')
+
+        # --- 3. ACIER ---
+        with tab_acier:
+            up_a = st.file_uploader("Bon acier", type=['jpg','png','heic'], key="up_a")
+            if up_a and st.session_state.relecture is None:
+                if st.button("Envoyer Bon", key="btn_a", type="primary"):
+                    with st.spinner("IA en cours..."):
+                        res = analyser_ia(up_a, OPENAI_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
+                        cols_temp = ["Doute"] + COLS_ACIER
+                        res = res.reindex(columns=cols_temp)
+                        res = appliquer_correction_u(res, ["Designation"])
+                        res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
+                        st.session_state.termes_inconnus = inconnus
+                        st.session_state.relecture = res
+                        st.rerun()
+            if st.session_state.relecture is not None:
+                if st.session_state.termes_inconnus:
+                    st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
+                else:
+                    st.info("Vérifiez les lignes.")
+                    
+                df_m = st.data_editor(
+                    st.session_state.relecture, 
+                    key="edit_a",
+                    disabled=["Doute"],
+                    use_container_width=True,
+                    column_config={
+                        "Doute": st.column_config.CheckboxColumn("⚠️", default=False, width="small"),
+                        "Fournisseur": st.column_config.TextColumn("Fournisseur", width="medium"),
+                        "Designation": st.column_config.TextColumn("Désignation", width="large"),
+                        "Poids (kg)": st.column_config.NumberColumn("Poids (kg)", width="medium"),
+                    }
+                )
+                if st.button("Valider et Sauvegarder", key="save_a"):
+                    df_clean = df_m.drop(columns=["Doute"], errors="ignore")
+                    sheets["Acier"] = pd.concat([df_acier, df_clean], ignore_index=True)
+                    sauvegarder_excel_github(sheets, path_f, sha)
+                    st.session_state.relecture = None
+                    st.session_state.termes_inconnus = []
+                    st.rerun()
+            st.divider()
+            st.dataframe(df_acier, width='stretch')
+
+        # --- 4. PRÉVISIONNEL ---
+        with tab_prev:
+            col_custom, col_standard = st.columns([1, 1])
+            
+            with col_custom:
+                st.subheader("Ajout Personnalisé")
+                with st.form("ajout_prev"):
+                    st.caption("Pour ajouter un élément hors liste standard.")
+                    new_des = st.text_input("Désignation")
+                    new_vol = st.number_input("Volume Prévu (m3)", step=1.0)
+                    new_zone = st.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
+                    submitted = st.form_submit_button("Ajouter (+)")
+                    
+                    if submitted and new_des:
+                        new_row = pd.DataFrame([{"Designation": new_des, "Prevu (m3)": new_vol, "Zone": new_zone}])
+                        sheets["Previsionnel"] = pd.concat([df_prev, new_row], ignore_index=True)
+                        sauvegarder_excel_github(sheets, path_f, sha)
+                        st.rerun()
+
+            with col_standard:
+                st.subheader("Grille de Saisie Standard")
+                
+                if not df_prev.empty:
+                    df_prev["_key"] = df_prev["Designation"].astype(str) + "_" + df_prev["Zone"].astype(str)
+                    existing_keys = df_prev["_key"].tolist()
+                    rows_to_add = []
+                    for item in STANDARD_ITEMS:
+                        key = item["Designation"] + "_" + item["Zone"]
+                        if key not in existing_keys:
+                            rows_to_add.append({"Designation": item["Designation"], "Prevu (m3)": 0.0, "Zone": item["Zone"]})
+                    if rows_to_add:
+                        new_standard_df = pd.DataFrame(rows_to_add)
+                        df_prev = pd.concat([df_prev, new_standard_df], ignore_index=True)
+                        if "_key" in df_prev.columns: df_prev = df_prev.drop(columns=["_key"])
+                        sheets["Previsionnel"] = df_prev
+                        sauvegarder_excel_github(sheets, path_f, sha)
+                        st.rerun()
+                    if "_key" in df_prev.columns: df_prev = df_prev.drop(columns=["_key"])
+                else:
+                    df_prev = pd.DataFrame(STANDARD_ITEMS)
+                    df_prev["Prevu (m3)"] = 0.0
+                    sheets["Previsionnel"] = df_prev
+                    sauvegarder_excel_github(sheets, path_f, sha)
+                    st.rerun()
+
+                st.markdown("### INFRA")
+                df_infra = df_prev[df_prev["Zone"] == "INFRA"].sort_values(by="Designation")
+                edited_infra = st.data_editor(
+                    df_infra, key="edit_infra", use_container_width=True, disabled=["Designation", "Zone"], hide_index=True,
+                    column_config={"Designation": st.column_config.TextColumn("Elément", width="medium"), "Zone": None, "Prevu (m3)": st.column_config.NumberColumn("Quantité (m3)", width="small", required=True)}
+                )
+
+                st.markdown("### SUPER")
+                df_super = df_prev[df_prev["Zone"] == "SUPER"].sort_values(by="Designation")
+                edited_super = st.data_editor(
+                    df_super, key="edit_super", use_container_width=True, disabled=["Designation", "Zone"], hide_index=True,
+                    column_config={"Designation": st.column_config.TextColumn("Elément", width="medium"), "Zone": None, "Prevu (m3)": st.column_config.NumberColumn("Quantité (m3)", width="small", required=True)}
+                )
+
+                if st.button("Enregistrer les Quantités", key="save_std_list", type="primary"):
+                    df_others = df_prev[~df_prev["Zone"].isin(["INFRA", "SUPER"])]
+                    df_final_prev = pd.concat([edited_infra, edited_super, df_others], ignore_index=True)
+                    sheets["Previsionnel"] = df_final_prev
+                    sauvegarder_excel_github(sheets, path_f, sha)
+                    st.success("Budget mis à jour !")
+                    st.rerun()
+
+        # --- 5. ÉTUDE ---
+        with tab_etude:
+            col_b, col_a = st.columns(2)
+            with col_b:
+                st.markdown("### 🧱 Étude Béton")
+                st.caption("Reprise des désignations du Prévisionnel")
+                df_merge_beton = pd.merge(
+                    df_prev[["Designation", "Zone"]], 
+                    df_etude_beton, 
+                    on=["Designation", "Zone"], 
+                    how="left"
+                ).fillna(0.0)
+                edited_etude_beton = st.data_editor(
+                    df_merge_beton,
+                    key="edit_etude_beton",
+                    use_container_width=True,
+                    disabled=["Designation", "Zone"],
+                    hide_index=True,
+                    column_config={
+                        "Designation": st.column_config.TextColumn("Désignation", width="medium"),
+                        "Zone": st.column_config.TextColumn("Zone", width="small"),
+                        "Etude (m3)": st.column_config.NumberColumn("Quantité (m3)", required=True)
+                    }
+                )
+                if st.button("Sauvegarder Étude Béton", key="save_etude_beton"):
+                    sheets["Etude_Beton"] = edited_etude_beton
+                    sauvegarder_excel_github(sheets, path_f, sha)
+                    st.success("Données Béton sauvegardées")
+
+            with col_a:
+                st.markdown("### ⛓️ Étude Acier")
+                edited_etude_acier = st.data_editor(
+                    df_etude_acier,
+                    key="edit_etude_acier",
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    column_config={
+                        "Designation": st.column_config.TextColumn("Désignation", width="medium"),
+                        "Acier HA": st.column_config.NumberColumn("Acier HA (kg)", required=True),
+                        "Acier TS": st.column_config.NumberColumn("Acier TS (kg)", required=True),
+                        "Zone": st.column_config.SelectboxColumn("Zone", options=["INFRA", "SUPER"], width="small")
+                    }
+                )
+                with st.form("ajout_etude_acier"):
+                    st.write("Ajouter une ligne Acier")
+                    c_form1, c_form2 = st.columns(2)
+                    new_des_a = c_form1.text_input("Désignation")
+                    new_zone_a = c_form2.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
+                    c_form3, c_form4 = st.columns(2)
+                    new_ha = c_form3.number_input("Poids HA (kg)", step=1.0)
+                    new_ts = c_form4.number_input("Poids TS (kg)", step=1.0)
+                    if st.form_submit_button("Ajouter (+)") and new_des_a:
+                        new_row_a = pd.DataFrame([{
+                            "Designation": new_des_a, 
+                            "Acier HA": new_ha, 
+                            "Acier TS": new_ts, 
+                            "Zone": new_zone_a
+                        }])
+                        df_etude_acier = pd.concat([edited_etude_acier, new_row_a], ignore_index=True)
+                        sheets["Etude_Acier"] = df_etude_acier
+                        sauvegarder_excel_github(sheets, path_f, sha)
+                        st.rerun()
+                if st.button("Sauvegarder Tableau Acier", key="save_etude_acier_global"):
+                    sheets["Etude_Acier"] = edited_etude_acier
+                    sauvegarder_excel_github(sheets, path_f, sha)
+                    st.success("Données Acier sauvegardées")
                 
     else:
         st.error("Fichier introuvable.")
