@@ -5,3 +5,4 @@ requests
 pillow
 pillow-heif
 PyGithub
+fpdf
