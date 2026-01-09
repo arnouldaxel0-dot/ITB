@@ -407,7 +407,7 @@ else:
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Étude", f"{etude_val:.2f} m³")
                         with col_sep:
-                            st.markdown("""<div style="border-left: 4px solid #E67E22; height: 100px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
+                            st.markdown("""<div style="border-left: 4px solid #E67E22; height: 90px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
                         if delta < 0:
                             color_reste = "#FF4B4B"
                             color_pct = "#FF4B4B"
@@ -645,5 +645,6 @@ else:
                 
     else:
         st.error("Fichier introuvable.")
+
 
 
