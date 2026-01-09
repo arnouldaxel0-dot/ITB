@@ -10,6 +10,7 @@ from PIL import Image
 import pillow_heif
 from datetime import datetime
 from fpdf import FPDF
+import xlsxwriter # NOUVEL IMPORT
 
 # --- 1. CONFIGURATION GITHUB ET OPENAI (Via Secrets) ---
 try:
@@ -75,13 +76,11 @@ def lister_chantiers():
         return sorted([c.name for c in contents if c.type == "dir"])
     except: return []
 
-# --- NOUVELLE FONCTION POUR RECUPERER FICHIER BRUT (PDF) ---
 def recuperer_fichier_github(path):
     try:
         content = repo.get_contents(path)
         return content.decoded_content
     except: return None
-# -----------------------------------------------------------
 
 def analyser_ia(uploaded_file, api_key, prompt):
     if not api_key:
@@ -145,29 +144,69 @@ def appliquer_correction_u(df, colonnes_a_verifier):
 
 def verifier_correspondance_budget(df_scan, df_budget, col_scan="Designation"):
     library = [remove_accents(str(x).strip().lower()) for x in df_budget["Designation"].unique()]
-    
     if "Doute" not in df_scan.columns:
         df_scan["Doute"] = False
-
     termes_inconnus = []
-
     for index, row in df_scan.iterrows():
         valeur_scan = remove_accents(str(row.get(col_scan, "")).strip().lower())
         valeur_scan_sing = valeur_scan[:-1] if valeur_scan.endswith('s') else valeur_scan
-        
         match_found = False
-        
         for ref in library:
             ref_sing = ref[:-1] if ref.endswith('s') else ref
             if valeur_scan == ref or valeur_scan_sing == ref_sing:
                 match_found = True
                 break
-        
         if not match_found:
             df_scan.at[index, "Doute"] = True
             termes_inconnus.append(row.get(col_scan, "Inconnu"))
-            
     return df_scan, termes_inconnus
+
+# --- FONCTION GENERATION EXCEL STYLISÉ ---
+def generer_excel_stylise(dfs_dict):
+    output = io.BytesIO()
+    # Utilisation du moteur XlsxWriter pour le formatage
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        workbook = writer.book
+        
+        # Formats
+        header_fmt = workbook.add_format({
+            'bold': True,
+            'text_wrap': True,
+            'valign': 'top',
+            'fg_color': '#E67E22', # Orange ITB77
+            'font_color': '#FFFFFF',
+            'border': 1
+        })
+        
+        for sheet_name, df in dfs_dict.items():
+            if df.empty:
+                continue
+                
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+            worksheet = writer.sheets[sheet_name]
+            
+            # Ajustement automatique des colonnes et création de tables
+            (max_row, max_col) = df.shape
+            
+            # Définir la structure du tableau pour activer les filtres et le style
+            column_settings = [{'header': column} for column in df.columns]
+            worksheet.add_table(0, 0, max_row, max_col - 1, {
+                'columns': column_settings,
+                'style': 'TableStyleMedium2', # Style bleu/gris standard
+                'name': f"Table_{remove_accents(sheet_name).replace(' ', '_')}"
+            })
+            
+            # Ajustement largeur colonnes
+            for i, col in enumerate(df.columns):
+                # On prend la largeur max entre le nom de la colonne et la donnée la plus longue
+                max_len = max(
+                    df[col].astype(str).map(len).max(),
+                    len(col)
+                ) + 2 # un peu de marge
+                worksheet.set_column(i, i, max_len)
+                # Appliquer le format d'en-tête (écrasé par add_table parfois, on force si besoin, mais add_table fait le job)
+
+    return output.getvalue()
 
 # --- FONCTION GENERATION PDF ---
 class PDF(FPDF):
@@ -175,7 +214,6 @@ class PDF(FPDF):
         self.set_font('Arial', 'B', 15)
         self.cell(0, 10, 'RECAPITULATIF CHANTIER', 0, 1, 'C')
         self.ln(5)
-
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
@@ -188,16 +226,13 @@ def generer_pdf_recap(df_target, nom_chantier):
     pdf.cell(0, 10, f"Chantier : {nom_chantier}", 0, 1, 'L')
     pdf.cell(0, 10, f"Date : {datetime.now().strftime('%d/%m/%Y')}", 0, 1, 'L')
     pdf.ln(5)
-    
     for zone in ["INFRA", "SUPER"]:
         pdf.set_font("Arial", 'B', 14)
         pdf.set_fill_color(230, 126, 34)
         pdf.cell(0, 10, f"{zone}STRUCTURE", 0, 1, 'L', fill=False)
         pdf.ln(2)
-        
         df_zone = df_target[df_target["Zone"] == zone]
         df_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0) | (df_zone.get("Etude (m3)", 0) > 0)]
-        
         if df_active.empty:
             pdf.set_font("Arial", 'I', 10)
             pdf.cell(0, 10, "Aucune donnée.", 0, 1)
@@ -209,7 +244,6 @@ def generer_pdf_recap(df_target, nom_chantier):
             pdf.cell(30, 8, "Etude", 1, 0, 'C')
             pdf.cell(30, 8, "Reste", 1, 0, 'C')
             pdf.cell(20, 8, "%", 1, 1, 'C')
-            
             pdf.set_font("Arial", size=10)
             for _, row in df_active.iterrows():
                 nom = str(row['Designation']).encode('latin-1', 'replace').decode('latin-1')
@@ -218,12 +252,10 @@ def generer_pdf_recap(df_target, nom_chantier):
                 etude = row.get('Etude (m3)', 0.0)
                 delta = prev - reel
                 pct = (reel / prev * 100) if prev > 0 else 0.0
-                
                 pdf.cell(50, 8, nom, 1)
                 pdf.cell(30, 8, f"{prev:.1f}", 1, 0, 'C')
                 pdf.cell(30, 8, f"{reel:.1f}", 1, 0, 'C')
                 pdf.cell(30, 8, f"{etude:.1f}", 1, 0, 'C')
-                
                 if delta < 0:
                     pdf.set_text_color(255, 0, 0)
                 else:
@@ -242,11 +274,9 @@ if 'termes_inconnus' not in st.session_state: st.session_state.termes_inconnus =
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
-    # MODIFICATION ICI POUR AJOUTER LE BOUTON FEUILLE DE SUIVI
     col_titre, col_suivi, col_refresh = st.columns([6, 2, 2])
     with col_titre: st.subheader("Mes Projets")
     with col_suivi:
-        # Téléchargement du fichier "Suivi béton ITB.pdf" depuis la racine du repo
         pdf_suivi = recuperer_fichier_github("Suivi béton ITB.pdf")
         if pdf_suivi:
             st.download_button("📄 Feuille de suivi", pdf_suivi, "Suivi_beton_ITB.pdf", "application/pdf", key="dl_suivi_home", use_container_width=True)
@@ -284,7 +314,6 @@ if st.session_state.page == "Accueil":
 
 else:
     nom_c = st.session_state.page
-    
     col_titre_c, col_act_c, col_ret_c = st.columns([6, 2, 2])
     with col_titre_c:
         st.header(f"📍 {nom_c}")
@@ -318,108 +347,119 @@ else:
         df_etude_beton = sheets.get("Etude_Beton", pd.DataFrame(columns=["Designation", "Etude (m3)", "Zone"]))
         df_etude_acier = sheets.get("Etude_Acier", pd.DataFrame(columns=COLS_ETUDE_ACIER))
 
+        # --- CALCUL DU RECAP (Déplacé ici pour être accessible au bouton Excel) ---
+        df_recap_final = pd.DataFrame()
+        if not df_prev.empty:
+            df_calc = df_beton.copy()
+            df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce').fillna(0)
+            
+            df_target = df_prev.copy()
+            df_target["Prevu (m3)"] = pd.to_numeric(df_target["Prevu (m3)"], errors='coerce').fillna(0)
+            if "Zone" not in df_target.columns: df_target["Zone"] = "INFRA"
+            df_target["Zone"] = df_target["Zone"].fillna("INFRA")
+            df_target["Volume Reel"] = 0.0
+            
+            df_etude_val = df_etude_beton.copy()
+            if not df_etude_val.empty and "Etude (m3)" in df_etude_val.columns:
+                df_etude_val["Etude (m3)"] = pd.to_numeric(df_etude_val["Etude (m3)"], errors='coerce').fillna(0)
+            else:
+                df_etude_val["Etude (m3)"] = 0.0
+            
+            fondation_details = {}
+
+            for _, row_reel in df_calc.iterrows():
+                nom_reel = str(row_reel["Designation"]).strip()
+                type_reel = str(row_reel.get("Type de Beton", "")).strip()
+                vol_reel = row_reel["Volume (m3)"]
+                texte_pour_zone = nom_reel + " " + type_reel
+                zone_du_bon = detecter_zone_automatique(texte_pour_zone)
+                nom_reel_clean = remove_accents(nom_reel.lower())
+                type_reel_clean = remove_accents(type_reel.lower())
+                for idx_prev, row_prev in df_target.iterrows():
+                    nom_budget_raw = str(row_prev["Designation"]).strip()
+                    mot_cle_budget = remove_accents(nom_budget_raw.lower())
+                    zone_budget = row_prev["Zone"]
+                    if zone_du_bon == zone_budget:
+                        if mot_cle_budget in nom_reel_clean or mot_cle_budget in type_reel_clean:
+                            df_target.at[idx_prev, "Volume Reel"] += vol_reel
+                            if mot_cle_budget == "fondation":
+                                type_beton_reel = row_reel.get("Type de Beton", "Non spécifié")
+                                if type_beton_reel not in fondation_details:
+                                    fondation_details[type_beton_reel] = 0.0
+                                fondation_details[type_beton_reel] += vol_reel
+                            break 
+            
+            df_target = pd.merge(df_target, df_etude_val[["Designation", "Zone", "Etude (m3)"]], on=["Designation", "Zone"], how="left").fillna(0)
+            
+            # Calculs finaux pour le tableau Recap Excel (Reste et %)
+            df_target["Reste (m3)"] = df_target["Prevu (m3)"] - df_target["Volume Reel"]
+            df_target["Avancement (%)"] = df_target.apply(lambda x: (x["Volume Reel"] / x["Prevu (m3)"] * 100) if x["Prevu (m3)"] > 0 else 0, axis=1)
+            df_recap_final = df_target
+
         # --- 1. RÉCAPITULATIF ---
         with tab_recap:
-            col_titre_recap, col_dl_recap = st.columns([8, 2])
+            col_titre_recap, col_dl_recap = st.columns([6, 4])
             with col_titre_recap:
                 st.subheader("Bilan consolidé par Zone et Famille")
             
-            if not df_prev.empty:
-                df_calc = df_beton.copy()
-                df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce').fillna(0)
+            with col_dl_recap:
+                c_pdf, c_xls = st.columns(2)
+                with c_pdf:
+                    pdf_bytes = generer_pdf_recap(df_recap_final, nom_c)
+                    st.download_button("📥 PDF", pdf_bytes, f"Recap_{nom_c}.pdf", "application/pdf", use_container_width=True)
+                with c_xls:
+                    # PREPARATION DES DONNEES POUR L'EXPORT EXCEL
+                    data_export = {
+                        "Récapitulatif": df_recap_final,
+                        "Béton": df_beton,
+                        "Acier": df_acier,
+                        "Prévisionnel": df_prev,
+                        "Étude Béton": df_etude_beton,
+                        "Étude Acier": df_etude_acier
+                    }
+                    xls_bytes = generer_excel_stylise(data_export)
+                    st.download_button("📥 Excel Complet", xls_bytes, f"Donnees_Completes_{nom_c}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+            for zone_name in ["INFRA", "SUPER"]:
+                st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
+                df_zone = df_recap_final[df_recap_final["Zone"] == zone_name]
+                df_zone_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0) | (df_zone["Etude (m3)"] > 0)]
                 
-                df_target = df_prev.copy()
-                df_target["Prevu (m3)"] = pd.to_numeric(df_target["Prevu (m3)"], errors='coerce').fillna(0)
-                if "Zone" not in df_target.columns: df_target["Zone"] = "INFRA"
-                df_target["Zone"] = df_target["Zone"].fillna("INFRA")
-                df_target["Volume Reel"] = 0.0
-                
-                df_etude_val = df_etude_beton.copy()
-                if not df_etude_val.empty and "Etude (m3)" in df_etude_val.columns:
-                    df_etude_val["Etude (m3)"] = pd.to_numeric(df_etude_val["Etude (m3)"], errors='coerce').fillna(0)
-                else:
-                    df_etude_val["Etude (m3)"] = 0.0
-                
-                for _, row_reel in df_calc.iterrows():
-                    nom_reel = str(row_reel["Designation"]).strip()
-                    type_reel = str(row_reel.get("Type de Beton", "")).strip()
-                    vol_reel = row_reel["Volume (m3)"]
-                    
-                    texte_pour_zone = nom_reel + " " + type_reel
-                    zone_du_bon = detecter_zone_automatique(texte_pour_zone)
-                    
-                    nom_reel_clean = remove_accents(nom_reel.lower())
-                    type_reel_clean = remove_accents(type_reel.lower())
-                    
-                    for idx_prev, row_prev in df_target.iterrows():
-                        nom_budget_raw = str(row_prev["Designation"]).strip()
-                        mot_cle_budget = remove_accents(nom_budget_raw.lower())
-                        zone_budget = row_prev["Zone"]
+                if not df_zone_active.empty:
+                    for _, row in df_zone_active.iterrows():
+                        st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
+                        col_left, col_sep, col_right = st.columns([6, 1, 4])
+                        prevu = row['Prevu (m3)']
+                        reel = row['Volume Reel']
+                        etude_val = row.get('Etude (m3)', 0.0)
+                        delta = prevu - reel
+                        pct = (reel / prevu * 100) if prevu > 0 else 0.0
                         
-                        if zone_du_bon == zone_budget:
-                            if mot_cle_budget in nom_reel_clean or mot_cle_budget in type_reel_clean:
-                                df_target.at[idx_prev, "Volume Reel"] += vol_reel
-                                break 
-                
-                df_target = pd.merge(df_target, df_etude_val[["Designation", "Zone", "Etude (m3)"]], on=["Designation", "Zone"], how="left").fillna(0)
-
-                with col_dl_recap:
-                    pdf_bytes = generer_pdf_recap(df_target, nom_c)
-                    st.download_button(
-                        label="📥 Télécharger PDF",
-                        data=pdf_bytes,
-                        file_name=f"Recap_{nom_c}_{datetime.now().strftime('%Y%m%d')}.pdf",
-                        mime="application/pdf"
-                    )
-
-                for zone_name in ["INFRA", "SUPER"]:
-                    st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
-                    df_zone = df_target[df_target["Zone"] == zone_name]
-                    df_zone_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0) | (df_zone["Etude (m3)"] > 0)]
-                    
-                    if not df_zone_active.empty:
-                        for _, row in df_zone_active.iterrows():
-                            st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
-                            
-                            col_left, col_sep, col_right = st.columns([6, 1, 4])
-                            
-                            prevu = row['Prevu (m3)']
-                            reel = row['Volume Reel']
-                            etude_val = row.get('Etude (m3)', 0.0)
-                            delta = prevu - reel
-                            pct = (reel / prevu * 100) if prevu > 0 else 0.0
-                            
-                            with col_left:
-                                c1, c2, c3 = st.columns(3)
-                                c1.metric("Budget", f"{prevu:.2f} m³")
-                                c2.metric("Consommé", f"{reel:.2f} m³")
-                                c3.metric("Étude", f"{etude_val:.2f} m³")
-                            
-                            with col_sep:
-                                st.markdown("""<div style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
-                            
-                            if delta < 0:
-                                color_reste = "#FF4B4B"
-                                color_pct = "#FF4B4B"
-                            else:
-                                color_reste = "inherit"
-                                color_pct = "inherit"
-
-                            with col_right:
-                                st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
-                                c4, c5 = st.columns(2)
-                                html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 24px; font-weight: 600; color: {color_reste};">{delta:.2f} m³</div></div>"""
-                                c4.markdown(html_reste, unsafe_allow_html=True)
-                                html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 24px; font-weight: 600; color: {color_pct};">{pct:.1f} %</div></div>"""
-                                c5.markdown(html_pct, unsafe_allow_html=True)
-
-                            st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
-                    else:
-                        st.info(f"Aucun élément actif en {zone_name}.")
-                    st.write("") 
-            else:
-                st.warning("Initialisation du budget en cours...")
-
+                        with col_left:
+                            c1, c2, c3 = st.columns(3)
+                            c1.metric("Budget", f"{prevu:.2f} m³")
+                            c2.metric("Consommé", f"{reel:.2f} m³")
+                            c3.metric("Étude", f"{etude_val:.2f} m³")
+                        with col_sep:
+                            st.markdown("""<div style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
+                        if delta < 0:
+                            color_reste = "#FF4B4B"
+                            color_pct = "#FF4B4B"
+                        else:
+                            color_reste = "inherit"
+                            color_pct = "inherit"
+                        with col_right:
+                            st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
+                            c4, c5 = st.columns(2)
+                            html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 24px; font-weight: 600; color: {color_reste};">{delta:.2f} m³</div></div>"""
+                            c4.markdown(html_reste, unsafe_allow_html=True)
+                            html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 24px; font-weight: 600; color: {color_pct};">{pct:.1f} %</div></div>"""
+                            c5.markdown(html_pct, unsafe_allow_html=True)
+                        st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
+                else:
+                    st.info(f"Aucun élément actif en {zone_name}.")
+                st.write("") 
+        
         # --- 2. BÉTON ---
         with tab_beton:
             up_b = st.file_uploader("Scan Bon Beton", type=['jpg','png','heic'], key="up_b")
@@ -509,7 +549,6 @@ else:
         # --- 4. PRÉVISIONNEL ---
         with tab_prev:
             col_custom, col_standard = st.columns([1, 1])
-            
             with col_custom:
                 st.subheader("Ajout Personnalisé")
                 with st.form("ajout_prev"):
@@ -518,7 +557,6 @@ else:
                     new_vol = st.number_input("Volume Prévu (m3)", step=1.0)
                     new_zone = st.radio("Zone", ["INFRA", "SUPER"], horizontal=True)
                     submitted = st.form_submit_button("Ajouter (+)")
-                    
                     if submitted and new_des:
                         new_row = pd.DataFrame([{"Designation": new_des, "Prevu (m3)": new_vol, "Zone": new_zone}])
                         sheets["Previsionnel"] = pd.concat([df_prev, new_row], ignore_index=True)
@@ -527,7 +565,6 @@ else:
 
             with col_standard:
                 st.subheader("Grille de Saisie Standard")
-                
                 if not df_prev.empty:
                     df_prev["_key"] = df_prev["Designation"].astype(str) + "_" + df_prev["Zone"].astype(str)
                     existing_keys = df_prev["_key"].tolist()
