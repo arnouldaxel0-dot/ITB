@@ -9,6 +9,7 @@ from github import Github, Auth
 from PIL import Image
 import pillow_heif
 from datetime import datetime
+from fpdf import FPDF
 
 # --- 1. CONFIGURATION GITHUB ET OPENAI (Via Secrets) ---
 try:
@@ -73,6 +74,14 @@ def lister_chantiers():
         contents = repo.get_contents(BASE_DIR)
         return sorted([c.name for c in contents if c.type == "dir"])
     except: return []
+
+# --- NOUVELLE FONCTION POUR RECUPERER FICHIER BRUT (PDF) ---
+def recuperer_fichier_github(path):
+    try:
+        content = repo.get_contents(path)
+        return content.decoded_content
+    except: return None
+# -----------------------------------------------------------
 
 def analyser_ia(uploaded_file, api_key, prompt):
     if not api_key:
@@ -160,6 +169,71 @@ def verifier_correspondance_budget(df_scan, df_budget, col_scan="Designation"):
             
     return df_scan, termes_inconnus
 
+# --- FONCTION GENERATION PDF ---
+class PDF(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 15)
+        self.cell(0, 10, 'RECAPITULATIF CHANTIER', 0, 1, 'C')
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+
+def generer_pdf_recap(df_target, nom_chantier):
+    pdf = PDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(0, 10, f"Chantier : {nom_chantier}", 0, 1, 'L')
+    pdf.cell(0, 10, f"Date : {datetime.now().strftime('%d/%m/%Y')}", 0, 1, 'L')
+    pdf.ln(5)
+    
+    for zone in ["INFRA", "SUPER"]:
+        pdf.set_font("Arial", 'B', 14)
+        pdf.set_fill_color(230, 126, 34)
+        pdf.cell(0, 10, f"{zone}STRUCTURE", 0, 1, 'L', fill=False)
+        pdf.ln(2)
+        
+        df_zone = df_target[df_target["Zone"] == zone]
+        df_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0) | (df_zone.get("Etude (m3)", 0) > 0)]
+        
+        if df_active.empty:
+            pdf.set_font("Arial", 'I', 10)
+            pdf.cell(0, 10, "Aucune donnée.", 0, 1)
+        else:
+            pdf.set_font("Arial", 'B', 10)
+            pdf.cell(50, 8, "Désignation", 1)
+            pdf.cell(30, 8, "Budget", 1, 0, 'C')
+            pdf.cell(30, 8, "Conso", 1, 0, 'C')
+            pdf.cell(30, 8, "Etude", 1, 0, 'C')
+            pdf.cell(30, 8, "Reste", 1, 0, 'C')
+            pdf.cell(20, 8, "%", 1, 1, 'C')
+            
+            pdf.set_font("Arial", size=10)
+            for _, row in df_active.iterrows():
+                nom = str(row['Designation']).encode('latin-1', 'replace').decode('latin-1')
+                prev = row['Prevu (m3)']
+                reel = row['Volume Reel']
+                etude = row.get('Etude (m3)', 0.0)
+                delta = prev - reel
+                pct = (reel / prev * 100) if prev > 0 else 0.0
+                
+                pdf.cell(50, 8, nom, 1)
+                pdf.cell(30, 8, f"{prev:.1f}", 1, 0, 'C')
+                pdf.cell(30, 8, f"{reel:.1f}", 1, 0, 'C')
+                pdf.cell(30, 8, f"{etude:.1f}", 1, 0, 'C')
+                
+                if delta < 0:
+                    pdf.set_text_color(255, 0, 0)
+                else:
+                    pdf.set_text_color(0, 0, 0)
+                pdf.cell(30, 8, f"{delta:.1f}", 1, 0, 'C')
+                pdf.cell(20, 8, f"{pct:.0f}%", 1, 1, 'C')
+                pdf.set_text_color(0, 0, 0)
+        pdf.ln(5)
+    return pdf.output(dest='S').encode('latin-1')
+
 # --- 4. INTERFACE ---
 if 'page' not in st.session_state: st.session_state.page = "Accueil"
 if 'relecture' not in st.session_state: st.session_state.relecture = None
@@ -168,8 +242,16 @@ if 'termes_inconnus' not in st.session_state: st.session_state.termes_inconnus =
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
-    col_titre, col_refresh = st.columns([8, 2])
+    # MODIFICATION ICI POUR AJOUTER LE BOUTON FEUILLE DE SUIVI
+    col_titre, col_suivi, col_refresh = st.columns([6, 2, 2])
     with col_titre: st.subheader("Mes Projets")
+    with col_suivi:
+        # Téléchargement du fichier "Suivi béton ITB.pdf" depuis la racine du repo
+        pdf_suivi = recuperer_fichier_github("Suivi béton ITB.pdf")
+        if pdf_suivi:
+            st.download_button("📄 Feuille de suivi", pdf_suivi, "Suivi_beton_ITB.pdf", "application/pdf", key="dl_suivi_home", use_container_width=True)
+        else:
+            st.warning("PDF introuvable")
     with col_refresh:
         if st.button("🔄 Actualiser", width='stretch', key="refresh_home"): st.rerun()
 
@@ -220,10 +302,8 @@ else:
     sheets, sha = lire_excel_github(path_f)
     
     if sheets is not None:
-        # NOUVEL ORDRE DES ONGLETS
         tab_recap, tab_beton, tab_acier, tab_prev, tab_etude = st.tabs(["Récapitulatif", "Béton", "Acier", "Prévisionnel", "Étude"])
         
-        # CHARGEMENT DES DONNÉES
         df_beton = sheets.get("Beton", pd.DataFrame(columns=COLS_BETON))
         if df_beton.empty: df_beton = pd.DataFrame(columns=COLS_BETON)
         
@@ -238,9 +318,12 @@ else:
         df_etude_beton = sheets.get("Etude_Beton", pd.DataFrame(columns=["Designation", "Etude (m3)", "Zone"]))
         df_etude_acier = sheets.get("Etude_Acier", pd.DataFrame(columns=COLS_ETUDE_ACIER))
 
-        # --- 1. RÉCAPITULATIF (Désormais en premier) ---
+        # --- 1. RÉCAPITULATIF ---
         with tab_recap:
-            st.subheader("Bilan consolidé par Zone et Famille")
+            col_titre_recap, col_dl_recap = st.columns([8, 2])
+            with col_titre_recap:
+                st.subheader("Bilan consolidé par Zone et Famille")
+            
             if not df_prev.empty:
                 df_calc = df_beton.copy()
                 df_calc["Volume (m3)"] = pd.to_numeric(df_calc["Volume (m3)"], errors='coerce').fillna(0)
@@ -279,6 +362,15 @@ else:
                                 break 
                 
                 df_target = pd.merge(df_target, df_etude_val[["Designation", "Zone", "Etude (m3)"]], on=["Designation", "Zone"], how="left").fillna(0)
+
+                with col_dl_recap:
+                    pdf_bytes = generer_pdf_recap(df_target, nom_c)
+                    st.download_button(
+                        label="📥 Télécharger PDF",
+                        data=pdf_bytes,
+                        file_name=f"Recap_{nom_c}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        mime="application/pdf"
+                    )
 
                 for zone_name in ["INFRA", "SUPER"]:
                     st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
