@@ -519,12 +519,36 @@ else:
                             with col_sep:
                                 st.markdown("""<div style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
                             
+                            # LOGIQUE COULEUR ROUGE SI DEPASSEMENT
+                            if delta < 0:
+                                color_reste = "#FF4B4B" # Rouge
+                                color_pct = "#FF4B4B"   # Rouge
+                            else:
+                                color_reste = "inherit" # Couleur par défaut
+                                color_pct = "inherit"
+
                             with col_right:
                                 st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
                                 c4, c5 = st.columns(2)
-                                c4.metric("Reste", f"{delta:.2f} m³")
-                                c5.metric("Avancement", f"{pct:.1f} %")
-                            
+                                
+                                # HTML pour "Reste" en ROUGE si négatif
+                                html_reste = f"""
+                                <div style="font-family: 'Source Sans Pro', sans-serif;">
+                                    <div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div>
+                                    <div style="font-size: 24px; font-weight: 600; color: {color_reste};">{delta:.2f} m³</div>
+                                </div>
+                                """
+                                c4.markdown(html_reste, unsafe_allow_html=True)
+                                
+                                # HTML pour "Avancement" en ROUGE si dépassement
+                                html_pct = f"""
+                                <div style="font-family: 'Source Sans Pro', sans-serif;">
+                                    <div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div>
+                                    <div style="font-size: 24px; font-weight: 600; color: {color_pct};">{pct:.1f} %</div>
+                                </div>
+                                """
+                                c5.markdown(html_pct, unsafe_allow_html=True)
+
                             st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
                     else:
                         st.info(f"Aucun élément actif en {zone_name}.")
