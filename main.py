@@ -529,7 +529,7 @@ else:
                             
                             # BLOC MILIEU (Barre orange verticale)
                             with col_sep:
-                                st.markdown("""<div style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
+                                st.markdown("""<div style="border-left: 4px solid #E67E22; height: 100px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
                             
                             # BLOC DROIT (Analyse + Ligne Bleue)
                             with col_right:
@@ -554,3 +554,4 @@ else:
                 
     else:
         st.error("Fichier introuvable.")
+
