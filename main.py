@@ -364,7 +364,6 @@ else:
 
         # --- 1. RÉCAPITULATIF ---
         with tab_recap:
-            # ICI LE CHANGEMENT DE TAILLE ET D'ALIGNEMENT
             col_titre_recap, col_dl_recap = st.columns([8.5, 1.5])
             with col_titre_recap:
                 st.subheader("Bilan consolidé par Zone et Famille")
@@ -394,7 +393,10 @@ else:
                 if not df_zone_active.empty:
                     for _, row in df_zone_active.iterrows():
                         st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
-                        col_left, col_sep, col_right = st.columns([6, 1, 4])
+                        
+                        # MODIFICATION ICI : On utilise une colonne vide (col_void) pour "pousser" les métriques l'une contre l'autre
+                        col_left, col_void, col_sep, col_right = st.columns([4, 4, 0.5, 2])
+                        
                         prevu = row['Prevu (m3)']
                         reel = row['Volume Reel']
                         etude_val = row.get('Etude (m3)', 0.0)
@@ -406,8 +408,11 @@ else:
                             c1.metric("Budget", f"{prevu:.2f} m³")
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Étude", f"{etude_val:.2f} m³")
+                        
+                        # col_void sert juste d'espaceur, on n'y met rien
+                        
                         with col_sep:
-                            st.markdown("""<div style="border-left: 4px solid #E67E22; height: 90px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
+                            st.markdown("""<div style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
                         if delta < 0:
                             color_reste = "#FF4B4B"
                             color_pct = "#FF4B4B"
@@ -645,6 +650,3 @@ else:
                 
     else:
         st.error("Fichier introuvable.")
-
-
-
