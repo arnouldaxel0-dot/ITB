@@ -10,7 +10,7 @@ from PIL import Image
 import pillow_heif
 from datetime import datetime
 from fpdf import FPDF
-import xlsxwriter # NOUVEL IMPORT
+import xlsxwriter
 
 # --- 1. CONFIGURATION GITHUB ET OPENAI (Via Secrets) ---
 try:
@@ -161,54 +161,22 @@ def verifier_correspondance_budget(df_scan, df_budget, col_scan="Designation"):
             termes_inconnus.append(row.get(col_scan, "Inconnu"))
     return df_scan, termes_inconnus
 
-# --- FONCTION GENERATION EXCEL STYLISÉ ---
 def generer_excel_stylise(dfs_dict):
     output = io.BytesIO()
-    # Utilisation du moteur XlsxWriter pour le formatage
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
-        
-        # Formats
-        header_fmt = workbook.add_format({
-            'bold': True,
-            'text_wrap': True,
-            'valign': 'top',
-            'fg_color': '#E67E22', # Orange ITB77
-            'font_color': '#FFFFFF',
-            'border': 1
-        })
-        
         for sheet_name, df in dfs_dict.items():
-            if df.empty:
-                continue
-                
+            if df.empty: continue
             df.to_excel(writer, sheet_name=sheet_name, index=False)
             worksheet = writer.sheets[sheet_name]
-            
-            # Ajustement automatique des colonnes et création de tables
             (max_row, max_col) = df.shape
-            
-            # Définir la structure du tableau pour activer les filtres et le style
             column_settings = [{'header': column} for column in df.columns]
-            worksheet.add_table(0, 0, max_row, max_col - 1, {
-                'columns': column_settings,
-                'style': 'TableStyleMedium2', # Style bleu/gris standard
-                'name': f"Table_{remove_accents(sheet_name).replace(' ', '_')}"
-            })
-            
-            # Ajustement largeur colonnes
+            worksheet.add_table(0, 0, max_row, max_col - 1, {'columns': column_settings, 'style': 'TableStyleMedium2', 'name': f"Table_{remove_accents(sheet_name).replace(' ', '_')}"})
             for i, col in enumerate(df.columns):
-                # On prend la largeur max entre le nom de la colonne et la donnée la plus longue
-                max_len = max(
-                    df[col].astype(str).map(len).max(),
-                    len(col)
-                ) + 2 # un peu de marge
+                max_len = max(df[col].astype(str).map(len).max(), len(col)) + 2
                 worksheet.set_column(i, i, max_len)
-                # Appliquer le format d'en-tête (écrasé par add_table parfois, on force si besoin, mais add_table fait le job)
-
     return output.getvalue()
 
-# --- FONCTION GENERATION PDF ---
 class PDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 15)
@@ -347,7 +315,7 @@ else:
         df_etude_beton = sheets.get("Etude_Beton", pd.DataFrame(columns=["Designation", "Etude (m3)", "Zone"]))
         df_etude_acier = sheets.get("Etude_Acier", pd.DataFrame(columns=COLS_ETUDE_ACIER))
 
-        # --- CALCUL DU RECAP (Déplacé ici pour être accessible au bouton Excel) ---
+        # --- CALCUL DU RECAP ---
         df_recap_final = pd.DataFrame()
         if not df_prev.empty:
             df_calc = df_beton.copy()
@@ -390,15 +358,14 @@ else:
                             break 
             
             df_target = pd.merge(df_target, df_etude_val[["Designation", "Zone", "Etude (m3)"]], on=["Designation", "Zone"], how="left").fillna(0)
-            
-            # Calculs finaux pour le tableau Recap Excel (Reste et %)
             df_target["Reste (m3)"] = df_target["Prevu (m3)"] - df_target["Volume Reel"]
             df_target["Avancement (%)"] = df_target.apply(lambda x: (x["Volume Reel"] / x["Prevu (m3)"] * 100) if x["Prevu (m3)"] > 0 else 0, axis=1)
             df_recap_final = df_target
 
         # --- 1. RÉCAPITULATIF ---
         with tab_recap:
-            col_titre_recap, col_dl_recap = st.columns([6, 4])
+            # ICI LE CHANGEMENT DE TAILLE ET D'ALIGNEMENT
+            col_titre_recap, col_dl_recap = st.columns([8.5, 1.5])
             with col_titre_recap:
                 st.subheader("Bilan consolidé par Zone et Famille")
             
@@ -408,7 +375,6 @@ else:
                     pdf_bytes = generer_pdf_recap(df_recap_final, nom_c)
                     st.download_button("📥 PDF", pdf_bytes, f"Recap_{nom_c}.pdf", "application/pdf", use_container_width=True)
                 with c_xls:
-                    # PREPARATION DES DONNEES POUR L'EXPORT EXCEL
                     data_export = {
                         "Récapitulatif": df_recap_final,
                         "Béton": df_beton,
@@ -418,7 +384,7 @@ else:
                         "Étude Acier": df_etude_acier
                     }
                     xls_bytes = generer_excel_stylise(data_export)
-                    st.download_button("📥 Excel Complet", xls_bytes, f"Donnees_Completes_{nom_c}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                    st.download_button("📥 Excel", xls_bytes, f"Donnees_{nom_c}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
             for zone_name in ["INFRA", "SUPER"]:
                 st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
