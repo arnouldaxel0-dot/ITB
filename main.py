@@ -379,8 +379,6 @@ else:
                             break 
             
             df_target = pd.merge(df_target, df_etude_val[["Designation", "Zone", "Etude (m3)"]], on=["Designation", "Zone"], how="left").fillna(0)
-            
-            # Calculs standard pour Excel (Budget - Reel)
             df_target["Reste (m3)"] = df_target["Prevu (m3)"] - df_target["Volume Reel"]
             df_target["Avancement (%)"] = df_target.apply(lambda x: (x["Volume Reel"] / x["Prevu (m3)"] * 100) if x["Prevu (m3)"] > 0 else 0, axis=1)
             df_recap_final = df_target
@@ -443,10 +441,15 @@ else:
                         with col_sep:
                             st.markdown("""<div class="mobile-hide" style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
                         
-                        # LOGIQUE COULEUR : Rouge si dépassement (diff > 0)
+                        # LOGIQUE COULEUR & % EN PLUS
+                        str_extra_pct = "" # Par défaut vide
                         if diff > 0:
                             color_reste = "#FF4B4B" # Rouge
                             color_pct = "#FF4B4B"
+                            # Calcul du % consommé en plus par rapport au prévisionnel
+                            pct_extra = (diff / prevu * 100) if prevu > 0 else 0.0
+                            # Ajout du texte (+XX.X%)
+                            str_extra_pct = f" <span style='font-size:0.7em'>(+{pct_extra:.1f}%)</span>"
                         else:
                             color_reste = "inherit" # Couleur standard
                             color_pct = "inherit"
@@ -455,8 +458,8 @@ else:
                             st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
                             c4, c5 = st.columns(2)
                             
-                            # Formatage avec signe + forcé pour les positifs : {diff:+.2f}
-                            html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 24px; font-weight: 600; color: {color_reste};">{diff:+.2f} m³</div></div>"""
+                            # Formatage avec signe + forcé pour les positifs et ajout du pourcentage extra si dépassement
+                            html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 24px; font-weight: 600; color: {color_reste};">{diff:+.2f} m³{str_extra_pct}</div></div>"""
                             c4.markdown(html_reste, unsafe_allow_html=True)
                             
                             html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 24px; font-weight: 600; color: {color_pct};">{pct:.1f} %</div></div>"""
