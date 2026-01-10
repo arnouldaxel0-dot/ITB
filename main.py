@@ -421,7 +421,6 @@ else:
                         reel = row['Volume Reel']
                         etude_val = row.get('Etude (m3)', 0.0)
                         
-                        # --- MODIFICATION LOGIQUE (INVERSION) ---
                         # Diff = Reel - Prevu
                         # Si Reel (50) < Prevu (300) -> diff = -250 (Négatif = Reste à couler)
                         # Si Reel (350) > Prevu (300) -> diff = +50 (Positif = Dépassement)
@@ -458,11 +457,12 @@ else:
                             st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
                             c4, c5 = st.columns(2)
                             
-                            # Formatage avec signe + forcé pour les positifs et ajout du pourcentage extra si dépassement
-                            html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 24px; font-weight: 600; color: {color_reste};">{diff:+.2f} m³{str_extra_pct}</div></div>"""
+                            # Formatage avec signe + forcé pour les positifs
+                            html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 24px; font-weight: 600; color: {color_reste};">{diff:+.2f} m³</div></div>"""
                             c4.markdown(html_reste, unsafe_allow_html=True)
                             
-                            html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 24px; font-weight: 600; color: {color_pct};">{pct:.1f} %</div></div>"""
+                            # Ajout du % en plus ici
+                            html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 24px; font-weight: 600; color: {color_pct};">{pct:.1f} %{str_extra_pct}</div></div>"""
                             c5.markdown(html_pct, unsafe_allow_html=True)
                         
                         st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
