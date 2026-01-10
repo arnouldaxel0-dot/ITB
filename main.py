@@ -413,7 +413,9 @@ else:
                     for _, row in df_zone_active.iterrows():
                         st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                         
-                        col_left, col_void, col_sep, col_right = st.columns([7, 0.5, 0.5, 4])
+                        # --- MODIFICATION LAYOUT (ESPACES RÉDUITS AU CENTRE) ---
+                        # Avant: [7, 0.5, 0.5, 3] -> Maintenant: [6.5, 0.2, 0.3, 3] pour rapprocher les blocs
+                        col_left, col_void, col_sep, col_right = st.columns([6.5, 0.2, 0.3, 3])
                         
                         prevu = row['Prevu (m3)']
                         reel = row['Volume Reel']
@@ -436,12 +438,12 @@ else:
                         with col_sep:
                             st.markdown("""<div class="mobile-hide" style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
                         
-                        str_depassement = "" 
+                        str_extra_pct = "" 
                         if diff > 0:
                             color_reste = "#FF4B4B" # Rouge
                             color_pct = "#FF4B4B"
                             pct_extra = (diff / prevu * 100) if prevu > 0 else 0.0
-                            str_depassement = f"+{pct_extra:.1f} %"
+                            str_extra_pct = f" <span style='font-size:0.7em'>(+{pct_extra:.1f}%)</span>"
                         else:
                             color_reste = "inherit" # Couleur standard
                             color_pct = "inherit"
@@ -449,27 +451,16 @@ else:
                         with col_right:
                             st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
                             
-                            c4, c5, c6 = st.columns(3)
+                            # --- RETOUR A 2 COLONNES (SUPPRESSION COLONNE DEPASSEMENT) ---
+                            c4, c5 = st.columns(2)
                             
-                            # C4 : RESTE (Milieu dans la demande précédente, mais ici on veut Reste, Avancement, Dépassement ?
-                            # Attends, la demande est: "intervertir Dépassement et Reste"
-                            # Ordre actuel (avant modif) : Reste | Dépassement | Avancement (ou l'inverse selon ton message précédent)
-                            # Je vais faire l'ordre standard demandé : Reste | Avancement | Dépassement (tout à droite)
-                            
-                            # C4 : Reste
+                            # C4 : RESTE
                             html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 20px; font-weight: 600; color: {color_reste};">{diff:+.2f} m³</div></div>"""
                             c4.markdown(html_reste, unsafe_allow_html=True)
                             
-                            # C5 : Avancement
-                            html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 20px; font-weight: 600; color: {color_pct};">{pct:.1f} %</div></div>"""
+                            # C5 : AVANCEMENT (AVEC LE % AJOUTÉ EN BOUT DE LIGNE)
+                            html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 20px; font-weight: 600; color: {color_pct};">{pct:.1f} %{str_extra_pct}</div></div>"""
                             c5.markdown(html_pct, unsafe_allow_html=True)
-                            
-                            # C6 : Dépassement (Tout à droite)
-                            if str_depassement:
-                                html_depass = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Dépassement</div><div style="font-size: 20px; font-weight: 600; color: #FF4B4B;">{str_depassement}</div></div>"""
-                                c6.markdown(html_depass, unsafe_allow_html=True)
-                            else:
-                                c6.write("") 
                         
                         st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
                 else:
