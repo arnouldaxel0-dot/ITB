@@ -57,7 +57,6 @@ st.set_page_config(page_title="Suivi béton", layout="wide")
 # --- AJOUT CSS POUR GESTION MOBILE VS PC ---
 st.markdown("""
 <style>
-    /* Sur mobile (écran < 640px), on cache les éléments avec la classe 'mobile-hide' */
     @media (max-width: 640px) {
         .mobile-hide {
             display: none !important;
@@ -67,7 +66,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-# -------------------------------------------
 
 # --- 3. FONCTIONS ---
 def lire_excel_github(path):
@@ -233,7 +231,11 @@ def generer_pdf_recap(df_target, nom_chantier):
                 prev = row['Prevu (m3)']
                 reel = row['Volume Reel']
                 etude = row.get('Etude (m3)', 0.0)
-                delta = prev - reel
+                
+                # Note: Le PDF garde la logique standard "Budget - Reel" pour l'instant
+                # Si vous voulez changer aussi le PDF, il faudrait inverser ici aussi
+                delta = prev - reel 
+                
                 pct = (reel / prev * 100) if prev > 0 else 0.0
                 pdf.cell(50, 8, nom, 1)
                 pdf.cell(30, 8, f"{prev:.1f}", 1, 0, 'C')
@@ -373,6 +375,8 @@ else:
                             break 
             
             df_target = pd.merge(df_target, df_etude_val[["Designation", "Zone", "Etude (m3)"]], on=["Designation", "Zone"], how="left").fillna(0)
+            
+            # Calculs standard pour Excel (Budget - Reel)
             df_target["Reste (m3)"] = df_target["Prevu (m3)"] - df_target["Volume Reel"]
             df_target["Avancement (%)"] = df_target.apply(lambda x: (x["Volume Reel"] / x["Prevu (m3)"] * 100) if x["Prevu (m3)"] > 0 else 0, axis=1)
             df_recap_final = df_target
@@ -409,13 +413,18 @@ else:
                     for _, row in df_zone_active.iterrows():
                         st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                         
-                        # --- MODIFICATION LAYOUT (ESPACE PLUS GRAND A GAUCHE) ---
                         col_left, col_void, col_sep, col_right = st.columns([7, 0.5, 0.5, 3])
                         
                         prevu = row['Prevu (m3)']
                         reel = row['Volume Reel']
                         etude_val = row.get('Etude (m3)', 0.0)
-                        delta = prevu - reel
+                        
+                        # --- MODIFICATION LOGIQUE (INVERSION) ---
+                        # Diff = Reel - Prevu
+                        # Si Reel (50) < Prevu (300) -> diff = -250 (Négatif = Reste à couler)
+                        # Si Reel (350) > Prevu (300) -> diff = +50 (Positif = Dépassement)
+                        diff = reel - prevu
+                        
                         pct = (reel / prevu * 100) if prevu > 0 else 0.0
                         
                         with col_left:
@@ -424,25 +433,28 @@ else:
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Étude", f"{etude_val:.2f} m³")
                         
-                        # Espaceur (masqué sur mobile)
                         with col_void:
                             st.markdown('<div class="mobile-hide" style="height: 10px;"></div>', unsafe_allow_html=True)
                         
                         with col_sep:
                             st.markdown("""<div class="mobile-hide" style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
                         
-                        if delta < 0:
-                            color_reste = "#FF4B4B"
+                        # LOGIQUE COULEUR : Rouge si dépassement (diff > 0)
+                        if diff > 0:
+                            color_reste = "#FF4B4B" # Rouge
                             color_pct = "#FF4B4B"
                         else:
-                            color_reste = "inherit"
+                            color_reste = "inherit" # Couleur standard
                             color_pct = "inherit"
                         
                         with col_right:
                             st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
                             c4, c5 = st.columns(2)
-                            html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 24px; font-weight: 600; color: {color_reste};">{delta:.2f} m³</div></div>"""
+                            
+                            # Formatage avec signe + forcé pour les positifs : {diff:+.2f}
+                            html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 24px; font-weight: 600; color: {color_reste};">{diff:+.2f} m³</div></div>"""
                             c4.markdown(html_reste, unsafe_allow_html=True)
+                            
                             html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 24px; font-weight: 600; color: {color_pct};">{pct:.1f} %</div></div>"""
                             c5.markdown(html_pct, unsafe_allow_html=True)
                         
