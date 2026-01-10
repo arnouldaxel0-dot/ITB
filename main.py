@@ -44,12 +44,16 @@ STANDARD_ITEMS = [
     {"Designation": "Poteau", "Zone": "INFRA"},
     {"Designation": "Poutre", "Zone": "INFRA"},
     {"Designation": "Dalle", "Zone": "INFRA"},
+    {"Designation": "Plancher Haut", "Zone": "INFRA"},
     {"Designation": "Voile", "Zone": "SUPER"},
     {"Designation": "Poteau", "Zone": "SUPER"},
     {"Designation": "Poutre", "Zone": "SUPER"},
     {"Designation": "Dalle", "Zone": "SUPER"},
     {"Designation": "Acrotère", "Zone": "SUPER"},
     {"Designation": "Édicule", "Zone": "SUPER"},
+    {"Designation": "Plancher Haut", "Zone": "SUPER"},
+    {"Designation": "Balcons", "Zone": "SUPER"},
+    {"Designation": "Divers", "Zone": "SUPER"},
 ]
 
 st.set_page_config(page_title="Suivi béton", layout="wide")
