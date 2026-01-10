@@ -54,7 +54,7 @@ STANDARD_ITEMS = [
 
 st.set_page_config(page_title="Suivi béton", layout="wide")
 
-# --- AJOUT CSS POUR GESTION MOBILE VS PC ---
+# --- AJOUT CSS INTELLIGENT (C'est ici que la magie PC vs Mobile opère) ---
 st.markdown("""
 <style>
     /* Sur mobile (écran < 640px), on cache les éléments avec la classe 'mobile-hide' */
@@ -62,11 +62,12 @@ st.markdown("""
         .mobile-hide {
             display: none !important;
             height: 0px !important;
+            margin: 0px !important;
         }
     }
 </style>
 """, unsafe_allow_html=True)
-# -------------------------------------------
+# -------------------------------------------------------------------------
 
 # --- 3. FONCTIONS ---
 def lire_excel_github(path):
@@ -423,7 +424,7 @@ else:
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Étude", f"{etude_val:.2f} m³")
                         
-                        # Espaceur
+                        # Espaceur (masqué sur mobile)
                         with col_void:
                             st.markdown('<div class="mobile-hide" style="height: 10px;"></div>', unsafe_allow_html=True)
                         
