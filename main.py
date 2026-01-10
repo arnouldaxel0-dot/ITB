@@ -408,8 +408,8 @@ else:
                     for _, row in df_zone_active.iterrows():
                         st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                         
-                        # --- MODIFICATION POUR ÉVITER LES "..." : PLUS DE PLACE À GAUCHE ---
-                        col_left, col_void, col_sep, col_right = st.columns([6, 2, 0.5, 2])
+                        # --- MODIFICATION LAYOUT (ESPACE PLUS GRAND A DROITE) ---
+                        col_left, col_void, col_sep, col_right = st.columns([5, 2, 0.5, 3])
                         
                         prevu = row['Prevu (m3)']
                         reel = row['Volume Reel']
@@ -423,7 +423,7 @@ else:
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Étude", f"{etude_val:.2f} m³")
                         
-                        # Espaceur (masqué sur mobile)
+                        # Espaceur
                         with col_void:
                             st.markdown('<div class="mobile-hide" style="height: 10px;"></div>', unsafe_allow_html=True)
                         
