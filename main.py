@@ -54,6 +54,20 @@ STANDARD_ITEMS = [
 
 st.set_page_config(page_title="Suivi béton", layout="wide")
 
+# --- AJOUT CSS POUR GESTION MOBILE VS PC ---
+st.markdown("""
+<style>
+    /* Sur mobile (écran < 640px), on cache les éléments avec la classe 'mobile-hide' */
+    @media (max-width: 640px) {
+        .mobile-hide {
+            display: none !important;
+            height: 0px !important;
+        }
+    }
+</style>
+""", unsafe_allow_html=True)
+# -------------------------------------------
+
 # --- 3. FONCTIONS ---
 def lire_excel_github(path):
     try:
@@ -394,7 +408,7 @@ else:
                     for _, row in df_zone_active.iterrows():
                         st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                         
-                        # MODIFICATION ICI : On utilise une colonne vide (col_void) pour "pousser" les métriques l'une contre l'autre
+                        # --- MODIFICATION LAYOUT (ESPACEUR AU CENTRE, MASQUÉ SUR MOBILE) ---
                         col_left, col_void, col_sep, col_right = st.columns([4, 4, 0.5, 2])
                         
                         prevu = row['Prevu (m3)']
@@ -409,16 +423,21 @@ else:
                             c2.metric("Consommé", f"{reel:.2f} m³")
                             c3.metric("Étude", f"{etude_val:.2f} m³")
                         
-                        # col_void sert juste d'espaceur, on n'y met rien
+                        # Colonne vide (espaceur), masquée via CSS sur mobile pour ne pas prendre de hauteur
+                        with col_void:
+                            st.markdown('<div class="mobile-hide" style="height: 10px;"></div>', unsafe_allow_html=True)
                         
                         with col_sep:
-                            st.markdown("""<div style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
+                            # Masquage de la barre orange sur mobile
+                            st.markdown("""<div class="mobile-hide" style="border-left: 4px solid #E67E22; height: 60px; margin-left: 50%;"></div>""", unsafe_allow_html=True)
+                        
                         if delta < 0:
                             color_reste = "#FF4B4B"
                             color_pct = "#FF4B4B"
                         else:
                             color_reste = "inherit"
                             color_pct = "inherit"
+                        
                         with col_right:
                             st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
                             c4, c5 = st.columns(2)
@@ -426,6 +445,7 @@ else:
                             c4.markdown(html_reste, unsafe_allow_html=True)
                             html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 24px; font-weight: 600; color: {color_pct};">{pct:.1f} %</div></div>"""
                             c5.markdown(html_pct, unsafe_allow_html=True)
+                        
                         st.markdown("<hr style='margin: 3px 0; border: none; border-top: 1px solid #444;'>", unsafe_allow_html=True)
                 else:
                     st.info(f"Aucun élément actif en {zone_name}.")
