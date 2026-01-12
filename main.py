@@ -60,51 +60,9 @@ STANDARD_ITEMS = [
 
 st.set_page_config(page_title="Suivi béton", layout="wide")
 
-# --- AJOUT CSS GLOBAL (COULEURS & MOBILE) ---
+# --- AJOUT CSS POUR GESTION MOBILE VS PC ---
 st.markdown("""
 <style>
-    /* 1. Fond du site */
-    .stApp {
-        background-color: #FFEBD1;
-    }
-    
-    /* 2. Textes en gras, Titres (h1, h2, h3) */
-    h1, h2, h3, h4, h5, h6, strong, b {
-        color: #001724 !important;
-    }
-    
-    /* 3. Boutons (Primaires et Secondaires) */
-    div.stButton > button {
-        background-color: #FF7A00 !important;
-        color: white !important;
-        border: none !important;
-    }
-    div.stButton > button:hover {
-        background-color: #E66A00 !important; /* Un peu plus foncé au survol */
-        color: white !important;
-    }
-    
-    /* 4. Onglets (Tabs) */
-    /* Couleur du texte de l'onglet inactif */
-    .stTabs [data-baseweb="tab"] {
-        color: #001724; 
-    }
-    /* Couleur de la barre de soulignement de l'onglet actif */
-    .stTabs [data-baseweb="tab-highlight"] {
-        background-color: #15676D !important;
-    }
-    /* Couleur du texte de l'onglet actif (optionnel, pour bien voir) */
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        color: #15676D !important;
-        font-weight: bold;
-    }
-
-    /* 5. Sidebar (Optionnel pour harmoniser) */
-    [data-testid="stSidebar"] {
-        background-color: #FFF5E6; /* Un beige très clair pour contraster légèrement */
-    }
-
-    /* Gestion Mobile */
     @media (max-width: 640px) {
         .mobile-hide {
             display: none !important;
@@ -347,7 +305,7 @@ with st.sidebar:
         else:
             st.session_state.is_admin = False
 
-st.markdown('<h1 style="color:#FF7A00; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True) # Titre en orange aussi
+st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
     col_titre, col_suivi, col_refresh = st.columns([6, 2, 2])
