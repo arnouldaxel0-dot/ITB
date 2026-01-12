@@ -440,13 +440,16 @@ else:
                     for _, row in df_zone_active.iterrows():
                         st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                         
+                        # --- MODIFICATION LAYOUT (ESPACES RÉDUITS AU CENTRE) ---
                         col_left, col_void, col_sep, col_right = st.columns([6.5, 0.2, 0.3, 3])
                         
                         prevu = row['Prevu (m3)']
                         reel = row['Volume Reel']
                         etude_val = row.get('Etude (m3)', 0.0)
                         
+                        # Diff = Reel - Prevu
                         diff = reel - prevu
+                        
                         pct = (reel / prevu * 100) if prevu > 0 else 0.0
                         
                         with col_left:
@@ -474,11 +477,14 @@ else:
                         with col_right:
                             st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
                             
+                            # --- 2 COLONNES : RESTE A GAUCHE, AVANCEMENT A DROITE ---
                             c4, c5 = st.columns(2)
                             
+                            # C4 : RESTE
                             html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 20px; font-weight: 600; color: {color_reste};">{diff:+.2f} m³</div></div>"""
                             c4.markdown(html_reste, unsafe_allow_html=True)
                             
+                            # C5 : AVANCEMENT (+ le petit pourcentage de dépassement si besoin)
                             html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 20px; font-weight: 600; color: {color_pct};">{pct:.1f} %{str_extra_pct}</div></div>"""
                             c5.markdown(html_pct, unsafe_allow_html=True)
                         
@@ -713,63 +719,79 @@ else:
                 with tab_pointage:
                     st.subheader("📸 Gestion des Pointages")
                     
-                    # 1. Gestion des dossiers (Mois)
                     path_pointages = f"{BASE_DIR}/{nom_c}/POINTAGES"
                     dossiers_existants = []
                     try:
                         contents = repo.get_contents(path_pointages)
                         dossiers_existants = [c.name for c in contents if c.type == "dir"]
                     except:
-                        pass # Pas encore de dossier POINTAGES
+                        pass
 
                     # Nom du mois actuel
                     mois_map = {1:"Janvier", 2:"Fevrier", 3:"Mars", 4:"Avril", 5:"Mai", 6:"Juin", 7:"Juillet", 8:"Aout", 9:"Septembre", 10:"Octobre", 11:"Novembre", 12:"Decembre"}
                     now = datetime.now()
                     nom_dossier_actuel = f"{mois_map[now.month]}-{now.year}"
 
-                    col_creer, col_select = st.columns([1, 2])
-                    with col_creer:
-                        if st.button(f"➕ Créer dossier {nom_dossier_actuel}"):
+                    # --- LAYOUT ADMIN : COLONNE GAUCHE (MENU) / COLONNE DROITE (CONTENU) ---
+                    col_nav, col_content = st.columns([1, 4]) 
+
+                    with col_nav:
+                        st.markdown("### 📂 Menu")
+                        if st.button(f"➕ {nom_dossier_actuel}", use_container_width=True):
                             try:
                                 repo.create_file(f"{path_pointages}/{nom_dossier_actuel}/.init", "Init", "")
                                 st.success(f"Dossier {nom_dossier_actuel} créé !")
                                 st.rerun()
                             except:
-                                st.warning("Dossier existe déjà ou erreur.")
-
-                    # 2. Sélection et Upload
-                    choix_dossier = st.selectbox("Sélectionner un mois", options=dossiers_existants, index=len(dossiers_existants)-1 if dossiers_existants else 0)
-
-                    if choix_dossier:
-                        path_img_folder = f"{path_pointages}/{choix_dossier}"
+                                st.warning("Dossier existe déjà.")
                         
-                        # Upload
-                        img_up = st.file_uploader("Ajouter une photo", type=['png', 'jpg', 'jpeg'])
-                        if img_up:
-                            if st.button("Sauvegarder la photo"):
-                                file_path = f"{path_img_folder}/{img_up.name}"
-                                try:
-                                    repo.create_file(file_path, f"Add img {img_up.name}", img_up.getvalue())
-                                    st.success("Photo envoyée !")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Erreur: {e}")
+                        st.write("---")
+                        
+                        if not dossiers_existants:
+                            st.info("Aucun dossier.")
+                            choix_dossier = None
+                        else:
+                            # Liste sous forme de radio (agit comme un menu)
+                            # On inverse pour avoir le plus récent en haut souvent
+                            choix_dossier = st.radio("Mois :", options=dossiers_existants, label_visibility="collapsed")
 
-                        # Affichage Galerie
-                        st.divider()
-                        st.write(f"Photos de {choix_dossier} :")
-                        try:
-                            imgs = repo.get_contents(path_img_folder)
-                            for img in imgs:
-                                if img.name.lower().endswith(('.png', '.jpg', '.jpeg', '.heic')):
-                                    col_img, col_dl = st.columns([4, 1])
-                                    with col_img:
-                                        # On utilise decoded_content pour afficher l'image depuis un repo privé si besoin
-                                        st.image(img.decoded_content, caption=img.name, width=300)
-                                    with col_dl:
-                                        st.download_button("⬇️", data=img.decoded_content, file_name=img.name)
-                        except:
-                            st.info("Dossier vide.")
+                    with col_content:
+                        if choix_dossier:
+                            st.markdown(f"### 📁 {choix_dossier}")
+                            path_img_folder = f"{path_pointages}/{choix_dossier}"
+                            
+                            # Upload
+                            img_up = st.file_uploader("Ajouter une photo", type=['png', 'jpg', 'jpeg'])
+                            if img_up:
+                                if st.button("Sauvegarder la photo"):
+                                    file_path = f"{path_img_folder}/{img_up.name}"
+                                    try:
+                                        repo.create_file(file_path, f"Add img {img_up.name}", img_up.getvalue())
+                                        st.success("Photo envoyée !")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erreur: {e}")
+
+                            # Affichage Galerie
+                            st.divider()
+                            st.write(f"Photos de {choix_dossier} :")
+                            try:
+                                imgs = repo.get_contents(path_img_folder)
+                                valid_imgs = [i for i in imgs if i.name.lower().endswith(('.png', '.jpg', '.jpeg', '.heic'))]
+                                
+                                if not valid_imgs:
+                                    st.info("Aucune photo dans ce dossier.")
+                                else:
+                                    # Affichage en grille
+                                    cols = st.columns(3)
+                                    for idx, img in enumerate(valid_imgs):
+                                        with cols[idx % 3]:
+                                            st.image(img.decoded_content, use_container_width=True)
+                                            st.download_button(f"⬇️ {img.name}", data=img.decoded_content, file_name=img.name, key=f"dl_{img.sha}")
+                            except:
+                                st.info("Dossier vide ou erreur de lecture.")
+                        else:
+                            st.info("👈 Sélectionnez ou créez un dossier à gauche.")
 
                 with tab_aco:
                     st.write("En attente...")
