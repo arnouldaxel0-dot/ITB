@@ -484,7 +484,7 @@ else:
                             html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 20px; font-weight: 600; color: {color_reste};">{diff:+.2f} m³</div></div>"""
                             c4.markdown(html_reste, unsafe_allow_html=True)
                             
-                            # C5 : AVANCEMENT (+ le petit pourcentage de dépassement si besoin)
+                            # C5 : AVANCEMENT (AVEC LE % AJOUTÉ EN BOUT DE LIGNE)
                             html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 20px; font-weight: 600; color: {color_pct};">{pct:.1f} %{str_extra_pct}</div></div>"""
                             c5.markdown(html_pct, unsafe_allow_html=True)
                         
@@ -772,24 +772,30 @@ else:
                                     except Exception as e:
                                         st.error(f"Erreur: {e}")
 
-                            # Affichage Galerie
+                            # Affichage Liste Fichiers (SANS IMAGE)
                             st.divider()
-                            st.write(f"Photos de {choix_dossier} :")
+                            st.write(f"Fichiers dans {choix_dossier} :")
                             try:
                                 imgs = repo.get_contents(path_img_folder)
                                 valid_imgs = [i for i in imgs if i.name.lower().endswith(('.png', '.jpg', '.jpeg', '.heic'))]
                                 
                                 if not valid_imgs:
-                                    st.info("Aucune photo dans ce dossier.")
+                                    st.info("Aucun fichier.")
                                 else:
-                                    # Affichage en grille
-                                    cols = st.columns(3)
-                                    for idx, img in enumerate(valid_imgs):
-                                        with cols[idx % 3]:
-                                            st.image(img.decoded_content, use_container_width=True)
-                                            st.download_button(f"⬇️ {img.name}", data=img.decoded_content, file_name=img.name, key=f"dl_{img.sha}")
+                                    for img in valid_imgs:
+                                        c1, c2 = st.columns([4, 1])
+                                        with c1:
+                                            st.write(f"📄 **{img.name}**")
+                                        with c2:
+                                            st.download_button(
+                                                label="⬇️ Télécharger",
+                                                data=img.decoded_content,
+                                                file_name=img.name,
+                                                key=f"dl_{img.sha}",
+                                                use_container_width=True
+                                            )
                             except:
-                                st.info("Dossier vide ou erreur de lecture.")
+                                st.info("Dossier vide ou erreur.")
                         else:
                             st.info("👈 Sélectionnez ou créez un dossier à gauche.")
 
