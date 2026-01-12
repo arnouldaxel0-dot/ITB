@@ -17,6 +17,8 @@ try:
     GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
     REPO_NAME = st.secrets.get("REPO_NAME", "")
     OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
+    # Récupération du mot de passe Admin
+    ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "admin123") 
     
     if GITHUB_TOKEN and REPO_NAME:
         auth = Auth.Token(GITHUB_TOKEN)
@@ -257,6 +259,23 @@ def generer_pdf_recap(df_target, nom_chantier):
 if 'page' not in st.session_state: st.session_state.page = "Accueil"
 if 'relecture' not in st.session_state: st.session_state.relecture = None
 if 'termes_inconnus' not in st.session_state: st.session_state.termes_inconnus = []
+if 'is_admin' not in st.session_state: st.session_state.is_admin = False
+
+# --- BARRE LATERALE (CONNEXION ADMIN) ---
+with st.sidebar:
+    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png", width=50) # Logo optionnel
+    st.write("### Menu")
+    with st.expander("🔐 Administration"):
+        pwd_input = st.text_input("Mot de passe", type="password", key="admin_pwd")
+        if pwd_input:
+            if pwd_input == ADMIN_PASSWORD:
+                st.session_state.is_admin = True
+                st.success("Mode Admin activé")
+            else:
+                st.session_state.is_admin = False
+                st.error("Mot de passe incorrect")
+        else:
+            st.session_state.is_admin = False
 
 st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
@@ -318,7 +337,15 @@ else:
     sheets, sha = lire_excel_github(path_f)
     
     if sheets is not None:
-        tab_recap, tab_beton, tab_acier, tab_prev, tab_etude = st.tabs(["Récapitulatif", "Béton", "Acier", "Prévisionnel", "Étude"])
+        # --- GESTION DES ONGLETS AVEC ADMIN ---
+        onglets = ["Récapitulatif", "Béton", "Acier", "Prévisionnel", "Étude"]
+        if st.session_state.is_admin:
+            onglets.append("⚙️ Admin")
+            
+        all_tabs = st.tabs(onglets)
+        
+        # On récupère les onglets standards
+        tab_recap, tab_beton, tab_acier, tab_prev, tab_etude = all_tabs[:5]
         
         df_beton = sheets.get("Beton", pd.DataFrame(columns=COLS_BETON))
         if df_beton.empty: df_beton = pd.DataFrame(columns=COLS_BETON)
@@ -414,7 +441,6 @@ else:
                         st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #E67E22; margin-bottom: 3px;'>{row['Designation']}</div>", unsafe_allow_html=True)
                         
                         # --- MODIFICATION LAYOUT (ESPACES RÉDUITS AU CENTRE) ---
-                        # Avant: [7, 0.5, 0.5, 3] -> Maintenant: [6.5, 0.2, 0.3, 3] pour rapprocher les blocs
                         col_left, col_void, col_sep, col_right = st.columns([6.5, 0.2, 0.3, 3])
                         
                         prevu = row['Prevu (m3)']
@@ -451,14 +477,13 @@ else:
                         with col_right:
                             st.markdown("""<div style="text-align: center; font-size: 12px; font-weight: bold; margin-bottom: 2px;">Écart Conso / Prévi</div><div style="border-top: 3px solid #1E90FF; margin-bottom: 10px;"></div>""", unsafe_allow_html=True)
                             
-                            # --- RETOUR A 2 COLONNES (SUPPRESSION COLONNE DEPASSEMENT) ---
                             c4, c5 = st.columns(2)
                             
                             # C4 : RESTE
                             html_reste = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Reste</div><div style="font-size: 20px; font-weight: 600; color: {color_reste};">{diff:+.2f} m³</div></div>"""
                             c4.markdown(html_reste, unsafe_allow_html=True)
                             
-                            # C5 : AVANCEMENT (AVEC LE % AJOUTÉ EN BOUT DE LIGNE)
+                            # C5 : AVANCEMENT
                             html_pct = f"""<div style="font-family: 'Source Sans Pro', sans-serif;"><div style="font-size: 14px; color: rgba(250, 250, 250, 0.6);">Avancement</div><div style="font-size: 20px; font-weight: 600; color: {color_pct};">{pct:.1f} %{str_extra_pct}</div></div>"""
                             c5.markdown(html_pct, unsafe_allow_html=True)
                         
@@ -683,6 +708,13 @@ else:
                     sheets["Etude_Acier"] = edited_etude_acier
                     sauvegarder_excel_github(sheets, path_f, sha)
                     st.success("Données Acier sauvegardées")
+        
+        # --- 6. ADMIN (ONGLET CACHÉ) ---
+        if st.session_state.is_admin:
+            with all_tabs[5]:
+                st.header("⚙️ Administration & Configurations")
+                st.write("Ceci est l'espace privé pour gérer les configurations, supprimer des chantiers ou modifier les listes déroulantes.")
+                # Ajoutez ici vos outils secrets...
                 
     else:
         st.error("Fichier introuvable.")
