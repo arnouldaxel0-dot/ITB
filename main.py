@@ -101,6 +101,34 @@ def recuperer_fichier_github(path):
         return content.decoded_content
     except: return None
 
+def sauvegarder_scan_github(uploaded_file, nom_chantier, type_doc):
+    """
+    Sauvegarde le scan du bon dans un dossier SCANS sur GitHub.
+    Nom format: JJ-MM-AAAA -- NomChantier -- HH-MM-SS.ext
+    """
+    try:
+        # 1. Préparation du nom de fichier
+        now = datetime.now()
+        date_str = now.strftime("%d-%m-%Y") # Jour-Mois-Année
+        heure_str = now.strftime("%H-%M-%S") # Pour éviter les doublons
+        ext = uploaded_file.name.split('.')[-1].lower()
+        
+        # Nettoyage du nom de chantier pour éviter les caractères interdits
+        nom_clean = remove_accents(nom_chantier).replace(" ", "_")
+        
+        new_filename = f"{date_str} -- {nom_clean} -- {heure_str}.{ext}"
+        
+        # 2. Définition du chemin : CHANTIERS_ITB77/NomChantier/SCANS_BETON/fichier...
+        folder_type = "SCANS_BETON" if "eton" in type_doc else "SCANS_ACIER"
+        path_github = f"{BASE_DIR}/{nom_chantier}/{folder_type}/{new_filename}"
+        
+        # 3. Envoi sur GitHub
+        repo.create_file(path_github, f"Ajout scan {type_doc}", uploaded_file.getvalue())
+        return True
+    except Exception as e:
+        print(f"Erreur sauvegarde scan: {e}")
+        return False
+
 def analyser_ia(uploaded_file, api_key, prompt):
     if not api_key:
         st.error("La cle OpenAI est manquante.")
@@ -528,6 +556,10 @@ else:
                     }
                 )
                 if st.button("Valider et Sauvegarder", key="save_b"):
+                    # SAUVEGARDE PHOTO SUR GITHUB
+                    if up_b is not None:
+                        sauvegarder_scan_github(up_b, nom_c, "Béton")
+                        
                     df_clean = df_m.drop(columns=["Doute"], errors="ignore")
                     sheets["Beton"] = pd.concat([df_beton, df_clean], ignore_index=True)
                     sauvegarder_excel_github(sheets, path_f, sha)
@@ -570,6 +602,10 @@ else:
                     }
                 )
                 if st.button("Valider et Sauvegarder", key="save_a"):
+                    # SAUVEGARDE PHOTO SUR GITHUB
+                    if up_a is not None:
+                        sauvegarder_scan_github(up_a, nom_c, "Acier")
+                        
                     df_clean = df_m.drop(columns=["Doute"], errors="ignore")
                     sheets["Acier"] = pd.concat([df_acier, df_clean], ignore_index=True)
                     sauvegarder_excel_github(sheets, path_f, sha)
@@ -793,7 +829,7 @@ else:
                                         
                                         with c2:
                                             st.download_button(
-                                                label="📥 Télécharger",
+                                                label="⬇️",
                                                 data=img.decoded_content,
                                                 file_name=img.name,
                                                 key=f"dl_{img.sha}",
@@ -801,7 +837,7 @@ else:
                                             )
                                         
                                         with c3:
-                                            if st.button("🗑️ Supprimer", key=f"del_{img.sha}", use_container_width=True):
+                                            if st.button("🗑️", key=f"del_{img.sha}", use_container_width=True):
                                                 try:
                                                     repo.delete_file(img.path, f"Delete {img.name}", img.sha)
                                                     st.toast(f"Fichier {img.name} supprimé !")
