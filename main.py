@@ -783,25 +783,25 @@ else:
                                     st.info("Aucun fichier.")
                                 else:
                                     for img in valid_imgs:
-                                        # On utilise des colonnes serrées pour un look compact
-                                        # Filename (Gros) | Download (Petit) | Delete (Petit)
-                                        c1, c2, c3 = st.columns([5, 1, 1])
+                                        # On utilise des colonnes pour pousser à droite
+                                        # Filename (Gros) | Download (Moyen) | Delete (Moyen)
+                                        c1, c2, c3 = st.columns([6, 2, 2])
                                         
                                         with c1:
-                                            st.write(f"📄 **{img.name}**")
+                                            # On aligne verticalement le texte pour qu'il soit au niveau des boutons
+                                            st.markdown(f"<div style='padding-top: 5px;'>📄 <b>{img.name}</b></div>", unsafe_allow_html=True)
                                         
                                         with c2:
-                                            # Bouton Download avec icône simple
                                             st.download_button(
-                                                label="⬇️",
+                                                label="📥 Télécharger",
                                                 data=img.decoded_content,
                                                 file_name=img.name,
-                                                key=f"dl_{img.sha}"
+                                                key=f"dl_{img.sha}",
+                                                use_container_width=True # Prend toute la largeur de la petite colonne
                                             )
                                         
                                         with c3:
-                                            # Bouton Delete immédiat (pas de confirmation = danger, mais c'est la demande)
-                                            if st.button("🗑️", key=f"del_{img.sha}"):
+                                            if st.button("🗑️ Supprimer", key=f"del_{img.sha}", use_container_width=True):
                                                 try:
                                                     repo.delete_file(img.path, f"Delete {img.name}", img.sha)
                                                     st.toast(f"Fichier {img.name} supprimé !")
