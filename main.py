@@ -772,7 +772,7 @@ else:
                                     except Exception as e:
                                         st.error(f"Erreur: {e}")
 
-                            # Affichage Liste Fichiers (SANS IMAGE)
+                            # Affichage Liste Fichiers (SANS IMAGE - JUSTE NOM ET BOUTONS)
                             st.divider()
                             st.write(f"Fichiers dans {choix_dossier} :")
                             try:
@@ -783,17 +783,32 @@ else:
                                     st.info("Aucun fichier.")
                                 else:
                                     for img in valid_imgs:
-                                        c1, c2 = st.columns([4, 1])
+                                        # On utilise des colonnes serrées pour un look compact
+                                        # Filename (Gros) | Download (Petit) | Delete (Petit)
+                                        c1, c2, c3 = st.columns([5, 1, 1])
+                                        
                                         with c1:
                                             st.write(f"📄 **{img.name}**")
+                                        
                                         with c2:
+                                            # Bouton Download avec icône simple
                                             st.download_button(
-                                                label="⬇️ Télécharger",
+                                                label="⬇️",
                                                 data=img.decoded_content,
                                                 file_name=img.name,
-                                                key=f"dl_{img.sha}",
-                                                use_container_width=True
+                                                key=f"dl_{img.sha}"
                                             )
+                                        
+                                        with c3:
+                                            # Bouton Delete immédiat (pas de confirmation = danger, mais c'est la demande)
+                                            if st.button("🗑️", key=f"del_{img.sha}"):
+                                                try:
+                                                    repo.delete_file(img.path, f"Delete {img.name}", img.sha)
+                                                    st.toast(f"Fichier {img.name} supprimé !")
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"Erreur suppression : {e}")
+
                             except:
                                 st.info("Dossier vide ou erreur.")
                         else:
