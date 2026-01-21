@@ -7,3 +7,4 @@ pillow-heif
 PyGithub
 fpdf
 xlsxwriter
+google-generativeai
