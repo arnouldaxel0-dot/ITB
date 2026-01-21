@@ -538,14 +538,24 @@ else:
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_b, GOOGLE_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
                         
-                        # --- CORRECTION TYPE ---
+                        # --- BLOC DE NETTOYAGE ET CONVERSION ---
                         if not res.empty:
+                            # 1. Conversion des colonnes TEXTE (str) pour éviter l'erreur FLOAT
+                            for col in ["Fournisseur", "Designation", "Type de Beton"]:
+                                if col in res.columns:
+                                    res[col] = res[col].astype(str).replace('nan', '')
+                            
+                            # 2. Conversion des colonnes NUMERIQUES (float)
                             if "Volume (m3)" in res.columns:
                                 res["Volume (m3)"] = pd.to_numeric(res["Volume (m3)"], errors='coerce').fillna(0.0).astype(float)
                             else:
                                 res["Volume (m3)"] = 0.0
+                            
+                            # 3. Colonne Doute
                             if "Doute" not in res.columns:
                                 res["Doute"] = False
+                            else:
+                                res["Doute"] = res["Doute"].astype(bool)
 
                         cols_temp = ["Doute"] + COLS_BETON 
                         res = res.reindex(columns=cols_temp)
@@ -596,14 +606,24 @@ else:
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_a, GOOGLE_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
                         
-                        # --- CORRECTION TYPE ---
+                        # --- BLOC DE NETTOYAGE ET CONVERSION ---
                         if not res.empty:
+                            # 1. Conversion des colonnes TEXTE (str)
+                            for col in ["Fournisseur", "Designation", "Type d Acier"]:
+                                if col in res.columns:
+                                    res[col] = res[col].astype(str).replace('nan', '')
+                            
+                            # 2. Conversion des colonnes NUMERIQUES (float)
                             if "Poids (kg)" in res.columns:
                                 res["Poids (kg)"] = pd.to_numeric(res["Poids (kg)"], errors='coerce').fillna(0.0).astype(float)
                             else:
                                 res["Poids (kg)"] = 0.0
+
+                            # 3. Colonne Doute
                             if "Doute" not in res.columns:
                                 res["Doute"] = False
+                            else:
+                                res["Doute"] = res["Doute"].astype(bool)
 
                         cols_temp = ["Doute"] + COLS_ACIER
                         res = res.reindex(columns=cols_temp)
