@@ -538,29 +538,26 @@ else:
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_b, GOOGLE_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
                         
-                        # --- BLOC DE NETTOYAGE ET CONVERSION ---
-                        if not res.empty:
-                            # 1. Conversion des colonnes TEXTE (str) pour éviter l'erreur FLOAT
-                            for col in ["Fournisseur", "Designation", "Type de Beton"]:
-                                if col in res.columns:
-                                    res[col] = res[col].astype(str).replace('nan', '')
-                            
-                            # 2. Conversion des colonnes NUMERIQUES (float)
-                            if "Volume (m3)" in res.columns:
-                                res["Volume (m3)"] = pd.to_numeric(res["Volume (m3)"], errors='coerce').fillna(0.0).astype(float)
-                            else:
-                                res["Volume (m3)"] = 0.0
-                            
-                            # 3. Colonne Doute
-                            if "Doute" not in res.columns:
-                                res["Doute"] = False
-                            else:
-                                res["Doute"] = res["Doute"].astype(bool)
-
-                        cols_temp = ["Doute"] + COLS_BETON 
+                        # --- BLOC DE NETTOYAGE ROBUSTE ET ORDRE MODIFIÉ ---
+                        # 1. On s'assure d'abord d'avoir toutes les colonnes requises
+                        cols_temp = ["Doute"] + COLS_BETON
                         res = res.reindex(columns=cols_temp)
+
+                        # 2. Conversion explicite en TEXTE (str) pour éviter les "float" (NaN)
+                        for col in ["Fournisseur", "Designation", "Type de Beton"]:
+                            res[col] = res[col].fillna("").astype(str).replace("nan", "")
+                        
+                        # 3. Conversion explicite en NOMBRE (float)
+                        if "Volume (m3)" in res.columns:
+                            res["Volume (m3)"] = pd.to_numeric(res["Volume (m3)"], errors='coerce').fillna(0.0)
+                        
+                        # 4. Conversion explicite en BOOLEAN
+                        res["Doute"] = res["Doute"].fillna(False).astype(bool)
+
+                        # 5. Corrections métier (lettres qui traînent etc.)
                         res = appliquer_correction_u(res, ["Designation", "Type de Beton"])
                         res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
+                        
                         st.session_state.termes_inconnus = inconnus
                         st.session_state.relecture = res
                         st.rerun()
@@ -606,32 +603,30 @@ else:
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_a, GOOGLE_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
                         
-                        # --- BLOC DE NETTOYAGE ET CONVERSION ---
-                        if not res.empty:
-                            # 1. Conversion des colonnes TEXTE (str)
-                            for col in ["Fournisseur", "Designation", "Type d Acier"]:
-                                if col in res.columns:
-                                    res[col] = res[col].astype(str).replace('nan', '')
-                            
-                            # 2. Conversion des colonnes NUMERIQUES (float)
-                            if "Poids (kg)" in res.columns:
-                                res["Poids (kg)"] = pd.to_numeric(res["Poids (kg)"], errors='coerce').fillna(0.0).astype(float)
-                            else:
-                                res["Poids (kg)"] = 0.0
-
-                            # 3. Colonne Doute
-                            if "Doute" not in res.columns:
-                                res["Doute"] = False
-                            else:
-                                res["Doute"] = res["Doute"].astype(bool)
-
+                        # --- BLOC DE NETTOYAGE ROBUSTE ET ORDRE MODIFIÉ ---
+                        # 1. Structure
                         cols_temp = ["Doute"] + COLS_ACIER
                         res = res.reindex(columns=cols_temp)
+                        
+                        # 2. Texte (string pur)
+                        for col in ["Fournisseur", "Designation", "Type d Acier"]:
+                            res[col] = res[col].fillna("").astype(str).replace("nan", "")
+                        
+                        # 3. Nombre
+                        if "Poids (kg)" in res.columns:
+                            res["Poids (kg)"] = pd.to_numeric(res["Poids (kg)"], errors='coerce').fillna(0.0)
+                        
+                        # 4. Bool
+                        res["Doute"] = res["Doute"].fillna(False).astype(bool)
+
+                        # 5. Métier
                         res = appliquer_correction_u(res, ["Designation"])
                         res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
+                        
                         st.session_state.termes_inconnus = inconnus
                         st.session_state.relecture = res
                         st.rerun()
+
             if st.session_state.relecture is not None:
                 if st.session_state.termes_inconnus:
                     st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
