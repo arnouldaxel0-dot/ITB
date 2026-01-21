@@ -317,8 +317,6 @@ if 'is_admin' not in st.session_state: st.session_state.is_admin = False
 
 # --- BARRE LATERALE (CONNEXION ADMIN) ---
 with st.sidebar:
-    # CORRECTION ICI : URL BRUTE, SANS MARKDOWN
-    st.image("[https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png](https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png)", width=50) 
     st.write("### Menu")
     with st.expander("🔐 Administration"):
         pwd_input = st.text_input("Mot de passe", type="password", key="admin_pwd")
