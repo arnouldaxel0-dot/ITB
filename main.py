@@ -317,7 +317,8 @@ if 'is_admin' not in st.session_state: st.session_state.is_admin = False
 
 # --- BARRE LATERALE (CONNEXION ADMIN) ---
 with st.sidebar:
-    st.image("[https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png](https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png)", width=50) # Logo optionnel
+    # CORRECTION ICI : URL BRUTE, SANS MARKDOWN
+    st.image("[https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png](https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png)", width=50) 
     st.write("### Menu")
     with st.expander("🔐 Administration"):
         pwd_input = st.text_input("Mot de passe", type="password", key="admin_pwd")
@@ -331,7 +332,7 @@ with st.sidebar:
         else:
             st.session_state.is_admin = False
 
-st.markdown('<h1 style="color:#FF7A00; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True) # Titre en orange aussi
+st.markdown('<h1 style="color:#FF7A00; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
     col_titre, col_suivi, col_refresh = st.columns([6, 2, 2])
@@ -488,7 +489,7 @@ else:
             for zone_name in ["INFRA", "SUPER"]:
                 st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
                 df_zone = df_recap_final[df_recap_final["Zone"] == zone_name]
-                df_zone_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0) | (df_zone["Etude (m3)"] > 0)]
+                df_zone_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0) | (df_zone.get("Etude (m3)", 0) > 0)]
                 
                 if not df_zone_active.empty:
                     for _, row in df_zone_active.iterrows():
