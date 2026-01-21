@@ -489,7 +489,7 @@ else:
             for zone_name in ["INFRA", "SUPER"]:
                 st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
                 df_zone = df_recap_final[df_recap_final["Zone"] == zone_name]
-                df_zone_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0) | (df_zone.get("Etude (m3)", 0) > 0)]
+                df_zone_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0) | (df_zone["Etude (m3)"] > 0)]
                 
                 if not df_zone_active.empty:
                     for _, row in df_zone_active.iterrows():
