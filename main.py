@@ -277,9 +277,7 @@ def generer_pdf_recap(df_target, nom_chantier):
                 prev = row['Prevu (m3)']
                 reel = row['Volume Reel']
                 etude = row.get('Etude (m3)', 0.0)
-                
                 delta = prev - reel 
-                
                 pct = (reel / prev * 100) if prev > 0 else 0.0
                 pdf.cell(50, 8, nom, 1)
                 pdf.cell(30, 8, f"{prev:.1f}", 1, 0, 'C')
@@ -303,9 +301,6 @@ if 'is_admin' not in st.session_state: st.session_state.is_admin = False
 
 # --- BARRE LATERALE (CONNEXION ADMIN) ---
 with st.sidebar:
-    # URL CORRIGÉE (Plus de Markdown invalide ici)
-    st.image("[https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png](https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png)", width=50) 
-    
     st.write("### Menu")
     with st.expander("🔐 Administration"):
         pwd_input = st.text_input("Mot de passe", type="password", key="admin_pwd")
