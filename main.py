@@ -537,6 +537,13 @@ else:
                 if st.button("Envoyer Bon", key="btn_b", type="primary"):
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_b, GOOGLE_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
+                        
+                        # --- CORRECTION DE TYPE (EVITE LE CRASH STREAMLIT) ---
+                        if "Volume (m3)" in res.columns:
+                            res["Volume (m3)"] = pd.to_numeric(res["Volume (m3)"], errors='coerce').fillna(0.0)
+                        if "Doute" in res.columns:
+                            res["Doute"] = res["Doute"].astype(bool)
+                        
                         cols_temp = ["Doute"] + COLS_BETON 
                         res = res.reindex(columns=cols_temp)
                         res = appliquer_correction_u(res, ["Designation", "Type de Beton"])
@@ -585,6 +592,13 @@ else:
                 if st.button("Envoyer Bon", key="btn_a", type="primary"):
                     with st.spinner("IA en cours..."):
                         res = analyser_ia(up_a, GOOGLE_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
+                        
+                        # --- CORRECTION DE TYPE (EVITE LE CRASH STREAMLIT) ---
+                        if "Poids (kg)" in res.columns:
+                            res["Poids (kg)"] = pd.to_numeric(res["Poids (kg)"], errors='coerce').fillna(0.0)
+                        if "Doute" in res.columns:
+                            res["Doute"] = res["Doute"].astype(bool)
+
                         cols_temp = ["Doute"] + COLS_ACIER
                         res = res.reindex(columns=cols_temp)
                         res = appliquer_correction_u(res, ["Designation"])
