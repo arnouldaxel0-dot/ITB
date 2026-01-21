@@ -11,12 +11,13 @@ import pillow_heif
 from datetime import datetime
 from fpdf import FPDF
 import xlsxwriter
+import google.generativeai as genai
 
 # --- 1. CONFIGURATION GITHUB ET OPENAI (Via Secrets) ---
 try:
     GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
     REPO_NAME = st.secrets.get("REPO_NAME", "")
-    OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
+    GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY", "")
     # Récupération du mot de passe Admin
     ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "admin123") 
     
@@ -60,9 +61,48 @@ STANDARD_ITEMS = [
 
 st.set_page_config(page_title="Suivi béton", layout="wide")
 
-# --- AJOUT CSS POUR GESTION MOBILE VS PC ---
+# --- AJOUT CSS GLOBAL (COULEURS & MOBILE) ---
 st.markdown("""
 <style>
+    /* 1. Fond du site */
+    .stApp {
+        background-color: #FFEBD1;
+    }
+    
+    /* 2. Textes en gras, Titres (h1, h2, h3) */
+    h1, h2, h3, h4, h5, h6, strong, b {
+        color: #001724 !important;
+    }
+    
+    /* 3. Boutons (Primaires et Secondaires) */
+    div.stButton > button {
+        background-color: #FF7A00 !important;
+        color: white !important;
+        border: none !important;
+    }
+    div.stButton > button:hover {
+        background-color: #E66A00 !important;
+        color: white !important;
+    }
+    
+    /* 4. Onglets (Tabs) */
+    .stTabs [data-baseweb="tab"] {
+        color: #001724; 
+    }
+    .stTabs [data-baseweb="tab-highlight"] {
+        background-color: #15676D !important;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #15676D !important;
+        font-weight: bold;
+    }
+
+    /* 5. Sidebar (Optionnel pour harmoniser) */
+    [data-testid="stSidebar"] {
+        background-color: #FFF5E6; 
+    }
+
+    /* Gestion Mobile */
     @media (max-width: 640px) {
         .mobile-hide {
             display: none !important;
@@ -102,27 +142,15 @@ def recuperer_fichier_github(path):
     except: return None
 
 def sauvegarder_scan_github(uploaded_file, nom_chantier, type_doc):
-    """
-    Sauvegarde le scan du bon dans un dossier SCANS sur GitHub.
-    Nom format: JJ-MM-AAAA -- NomChantier -- HH-MM-SS.ext
-    """
     try:
-        # 1. Préparation du nom de fichier
         now = datetime.now()
-        date_str = now.strftime("%d-%m-%Y") # Jour-Mois-Année
-        heure_str = now.strftime("%H-%M-%S") # Pour éviter les doublons
+        date_str = now.strftime("%d-%m-%Y") 
+        heure_str = now.strftime("%H-%M-%S")
         ext = uploaded_file.name.split('.')[-1].lower()
-        
-        # Nettoyage du nom de chantier pour éviter les caractères interdits
         nom_clean = remove_accents(nom_chantier).replace(" ", "_")
-        
         new_filename = f"{date_str} -- {nom_clean} -- {heure_str}.{ext}"
-        
-        # 2. Définition du chemin : CHANTIERS_ITB77/NomChantier/SCANS_BETON/fichier...
         folder_type = "SCANS_BETON" if "eton" in type_doc else "SCANS_ACIER"
         path_github = f"{BASE_DIR}/{nom_chantier}/{folder_type}/{new_filename}"
-        
-        # 3. Envoi sur GitHub
         repo.create_file(path_github, f"Ajout scan {type_doc}", uploaded_file.getvalue())
         return True
     except Exception as e:
@@ -131,39 +159,39 @@ def sauvegarder_scan_github(uploaded_file, nom_chantier, type_doc):
 
 def analyser_ia(uploaded_file, api_key, prompt):
     if not api_key:
-        st.error("La cle OpenAI est manquante.")
+        st.error("La clé Google API est manquante.")
         return None
-    file_ext = uploaded_file.name.lower()
-    if file_ext.endswith('.heic'):
-        heif_file = pillow_heif.read_heif(uploaded_file)
-        image = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw")
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG")
-        img_bytes = buffer.getvalue()
-    else: img_bytes = uploaded_file.getvalue()
-    
-    b64 = base64.b64encode(img_bytes).decode('utf-8')
-    headers = {"Authorization": f"Bearer {api_key}"}
-    
-    prompt_complet = prompt + ". Ajoute une colonne 'Doute' (boolean) : mets true si le texte est difficile à lire, flou ou si tu n'es pas sûr d'un mot. Sinon false."
-    
-    payload = {
-        "model": "gpt-4o",
-        "messages": [{"role": "user", "content": [{"type": "text", "text": prompt_complet}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}],
-        "temperature": 0
-    }
-    r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload).json()
     try:
-        usage = r.get('usage', {})
-        cout = (usage.get('prompt_tokens', 0) * 0.0000025) + (usage.get('completion_tokens', 0) * 0.000010)
-        st.toast(f"💰 Coût : {cout:.4f} $")
-    except: pass
-
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+    except Exception as e:
+        st.error(f"Erreur config Gemini: {e}")
+        return pd.DataFrame()
     try:
-        txt = r['choices'][0]['message']['content'].strip()
-        if txt.startswith("```"): txt = txt.split("```")[1].replace("json", "").strip()
-        return pd.DataFrame(json.loads(txt))
-    except:
+        file_ext = uploaded_file.name.lower()
+        if file_ext.endswith('.heic'):
+            heif_file = pillow_heif.read_heif(uploaded_file)
+            image = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw")
+        else:
+            image = Image.open(uploaded_file)
+    except Exception as e:
+        st.error(f"Erreur lecture image : {e}")
+        return pd.DataFrame()
+    prompt_complet = (
+        f"{prompt}. "
+        "Ajoute une colonne 'Doute' (boolean) : mets true si incertain, sinon false. "
+        "Retourne UNIQUEMENT une liste JSON brute compatible Python, sans balises markdown ```json ou ```."
+    )
+    try:
+        response = model.generate_content([prompt_complet, image])
+        txt = response.text.strip()
+        if txt.startswith("```json"): txt = txt.split("```json")[1]
+        if txt.startswith("```"): txt = txt.split("```")[1]
+        if txt.endswith("```"): txt = txt[:-3]
+        data = json.loads(txt)
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"Erreur analyse IA : {e}")
         return pd.DataFrame()
 
 def remove_accents(input_str):
@@ -265,9 +293,7 @@ def generer_pdf_recap(df_target, nom_chantier):
                 prev = row['Prevu (m3)']
                 reel = row['Volume Reel']
                 etude = row.get('Etude (m3)', 0.0)
-                
                 delta = prev - reel 
-                
                 pct = (reel / prev * 100) if prev > 0 else 0.0
                 pdf.cell(50, 8, nom, 1)
                 pdf.cell(30, 8, f"{prev:.1f}", 1, 0, 'C')
@@ -291,7 +317,7 @@ if 'is_admin' not in st.session_state: st.session_state.is_admin = False
 
 # --- BARRE LATERALE (CONNEXION ADMIN) ---
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png", width=50) # Logo optionnel
+    st.image("[https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png](https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png)", width=50) # Logo optionnel
     st.write("### Menu")
     with st.expander("🔐 Administration"):
         pwd_input = st.text_input("Mot de passe", type="password", key="admin_pwd")
@@ -305,7 +331,7 @@ with st.sidebar:
         else:
             st.session_state.is_admin = False
 
-st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
+st.markdown('<h1 style="color:#FF7A00; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True) # Titre en orange aussi
 
 if st.session_state.page == "Accueil":
     col_titre, col_suivi, col_refresh = st.columns([6, 2, 2])
@@ -527,7 +553,7 @@ else:
             if up_b and st.session_state.relecture is None:
                 if st.button("Envoyer Bon", key="btn_b", type="primary"):
                     with st.spinner("IA en cours..."):
-                        res = analyser_ia(up_b, OPENAI_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
+                        res = analyser_ia(up_b, GOOGLE_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
                         cols_temp = ["Doute"] + COLS_BETON 
                         res = res.reindex(columns=cols_temp)
                         res = appliquer_correction_u(res, ["Designation", "Type de Beton"])
@@ -575,7 +601,7 @@ else:
             if up_a and st.session_state.relecture is None:
                 if st.button("Envoyer Bon", key="btn_a", type="primary"):
                     with st.spinner("IA en cours..."):
-                        res = analyser_ia(up_a, OPENAI_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
+                        res = analyser_ia(up_a, GOOGLE_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
                         cols_temp = ["Doute"] + COLS_ACIER
                         res = res.reindex(columns=cols_temp)
                         res = appliquer_correction_u(res, ["Designation"])
