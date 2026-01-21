@@ -141,6 +141,43 @@ def sauvegarder_scan_github(uploaded_file, nom_chantier, type_doc):
         print(f"Erreur sauvegarde scan: {e}")
         return False
 
+def get_best_available_model():
+    """
+    Cherche automatiquement un modèle disponible.
+    Priorité : gemini-2.0-flash > gemini-1.5-flash > n'importe quel gemini
+    """
+    try:
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Liste de préférence
+        preferences = [
+            "models/gemini-2.0-flash-exp",
+            "models/gemini-1.5-flash",
+            "models/gemini-1.5-flash-002",
+            "models/gemini-1.5-flash-001",
+            "models/gemini-1.5-flash-latest",
+            "models/gemini-pro"
+        ]
+        
+        for pref in preferences:
+            if pref in available_models:
+                return pref.replace("models/", "") # On enlève le prefixe pour l'instanciation
+        
+        # Si aucun favori n'est trouvé, on prend le premier qui contient "flash"
+        for m in available_models:
+            if "flash" in m:
+                return m.replace("models/", "")
+                
+        # Sinon le tout premier disponible
+        if available_models:
+            return available_models[0].replace("models/", "")
+            
+    except Exception:
+        pass
+    
+    # Fallback ultime si l'API list_models échoue
+    return "gemini-1.5-flash"
+
 def analyser_ia(uploaded_file, api_key, prompt):
     if not api_key:
         st.error("La clé Google API est manquante.")
@@ -148,7 +185,9 @@ def analyser_ia(uploaded_file, api_key, prompt):
     
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Sélection dynamique du modèle pour éviter le 404
+        model_name = get_best_available_model()
+        model = genai.GenerativeModel(model_name)
     except Exception as e:
         st.error(f"Erreur config Gemini: {e}")
         return pd.DataFrame(), str(e)
@@ -194,10 +233,10 @@ def analyser_ia(uploaded_file, api_key, prompt):
             elif "result" in data: data = data["result"]
             else: data = [data] # Cas rare d'un seul objet
 
-        return pd.DataFrame(data), txt
+        return pd.DataFrame(data), f"Modèle utilisé: {model_name}\n\nRéponse brute:\n{txt}"
 
     except Exception as e:
-        st.error(f"Erreur analyse IA : {e}")
+        st.error(f"Erreur analyse IA ({model_name}) : {e}")
         return pd.DataFrame(), str(e)
 
 def remove_accents(input_str):
