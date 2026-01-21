@@ -12,6 +12,7 @@ from datetime import datetime
 from fpdf import FPDF
 import xlsxwriter
 import google.generativeai as genai
+import time
 
 # --- 1. CONFIGURATION GITHUB ET GOOGLE (Via Secrets) ---
 try:
@@ -143,29 +144,28 @@ def sauvegarder_scan_github(uploaded_file, nom_chantier, type_doc):
 
 def get_best_available_model():
     """
-    Cherche automatiquement un modèle disponible.
-    Priorité : gemini-2.0-flash > gemini-1.5-flash > n'importe quel gemini
+    Cherche automatiquement un modèle disponible STABLE.
+    On a retiré les modèles expérimentaux (2.0-flash-exp) pour éviter l'erreur 429.
     """
     try:
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        # Liste de préférence
+        # Liste de préférence (UNIQUEMENT LES STABLES)
         preferences = [
-            "models/gemini-2.0-flash-exp",
-            "models/gemini-1.5-flash",
-            "models/gemini-1.5-flash-002",
+            "models/gemini-1.5-flash",      # Priorité absolue : le plus stable et gratuit
             "models/gemini-1.5-flash-001",
+            "models/gemini-1.5-flash-002",
             "models/gemini-1.5-flash-latest",
             "models/gemini-pro"
         ]
         
         for pref in preferences:
             if pref in available_models:
-                return pref.replace("models/", "") # On enlève le prefixe pour l'instanciation
+                return pref.replace("models/", "")
         
-        # Si aucun favori n'est trouvé, on prend le premier qui contient "flash"
+        # Si aucun favori n'est trouvé, on prend le premier qui contient "flash" (mais pas exp)
         for m in available_models:
-            if "flash" in m:
+            if "flash" in m and "exp" not in m:
                 return m.replace("models/", "")
                 
         # Sinon le tout premier disponible
@@ -175,7 +175,7 @@ def get_best_available_model():
     except Exception:
         pass
     
-    # Fallback ultime si l'API list_models échoue
+    # Fallback ultime (Stable)
     return "gemini-1.5-flash"
 
 def analyser_ia(uploaded_file, api_key, prompt):
@@ -185,7 +185,7 @@ def analyser_ia(uploaded_file, api_key, prompt):
     
     try:
         genai.configure(api_key=api_key)
-        # Sélection dynamique du modèle pour éviter le 404
+        # Sélection dynamique du modèle
         model_name = get_best_available_model()
         model = genai.GenerativeModel(model_name)
     except Exception as e:
@@ -203,7 +203,7 @@ def analyser_ia(uploaded_file, api_key, prompt):
         st.error(f"Erreur lecture image : {e}")
         return pd.DataFrame(), str(e)
 
-    # Prompt renforcé pour forcer les clés exactes
+    # Prompt renforcé
     prompt_complet = (
         f"{prompt}. "
         "IMPORTANT : Retourne UNIQUEMENT une liste JSON brute (tableau d'objets) compatible Python."
@@ -214,10 +214,12 @@ def analyser_ia(uploaded_file, api_key, prompt):
     )
 
     try:
+        # Petit délai pour éviter le spam si l'utilisateur clique frénétiquement
+        time.sleep(1) 
         response = model.generate_content([prompt_complet, image])
         txt = response.text.strip()
         
-        # Nettoyage Markdown si l'IA en met quand même
+        # Nettoyage Markdown
         if txt.startswith("```json"): txt = txt.split("```json")[1]
         elif txt.startswith("```"): txt = txt.split("```")[1]
         if txt.endswith("```"): txt = txt[:-3]
@@ -227,16 +229,15 @@ def analyser_ia(uploaded_file, api_key, prompt):
         # Tentative de chargement JSON
         data = json.loads(txt)
         
-        # Si l'IA renvoie un dict {"data": [...]}, on prend la liste
         if isinstance(data, dict):
             if "data" in data: data = data["data"]
             elif "result" in data: data = data["result"]
-            else: data = [data] # Cas rare d'un seul objet
+            else: data = [data]
 
-        return pd.DataFrame(data), f"Modèle utilisé: {model_name}\n\nRéponse brute:\n{txt}"
+        return pd.DataFrame(data), f"Modèle: {model_name}\n\n{txt}"
 
     except Exception as e:
-        st.error(f"Erreur analyse IA ({model_name}) : {e}")
+        # Affichage plus doux de l'erreur pour ne pas bloquer l'interface
         return pd.DataFrame(), str(e)
 
 def remove_accents(input_str):
@@ -534,7 +535,7 @@ else:
             for zone_name in ["INFRA", "SUPER"]:
                 st.markdown(f"## 🏗️ {zone_name}STRUCTURE")
                 df_zone = df_recap_final[df_recap_final["Zone"] == zone_name]
-                df_zone_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0) | (df_zone["Etude (m3)"] > 0)]
+                df_zone_active = df_zone[(df_zone["Prevu (m3)"] > 0) | (df_zone["Volume Reel"] > 0) | (df_zone.get("Etude (m3)", 0) > 0)]
                 
                 if not df_zone_active.empty:
                     for _, row in df_zone_active.iterrows():
