@@ -144,13 +144,15 @@ def sauvegarder_scan_github(uploaded_file, nom_chantier, type_doc):
 def analyser_ia(uploaded_file, api_key, prompt):
     if not api_key:
         st.error("La clé Google API est manquante.")
-        return None
+        return None, "Clé manquante"
+    
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-1.5-flash')
     except Exception as e:
         st.error(f"Erreur config Gemini: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), str(e)
+
     try:
         file_ext = uploaded_file.name.lower()
         if file_ext.endswith('.heic'):
@@ -160,23 +162,43 @@ def analyser_ia(uploaded_file, api_key, prompt):
             image = Image.open(uploaded_file)
     except Exception as e:
         st.error(f"Erreur lecture image : {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), str(e)
+
+    # Prompt renforcé pour forcer les clés exactes
     prompt_complet = (
         f"{prompt}. "
-        "Ajoute une colonne 'Doute' (boolean) : mets true si incertain, sinon false. "
-        "Retourne UNIQUEMENT une liste JSON brute compatible Python, sans balises markdown ```json ou ```."
+        "IMPORTANT : Retourne UNIQUEMENT une liste JSON brute (tableau d'objets) compatible Python."
+        "Ne mets PAS de Markdown (pas de ```json ... ```)."
+        "Les clés du JSON doivent être EXACTEMENT celles demandées dans le prompt (respecte majuscules/accents)."
+        "Si une valeur est absente, mets null ou 0."
+        "Ajoute une clé 'Doute' (boolean) : true si incertain, sinon false."
     )
+
     try:
         response = model.generate_content([prompt_complet, image])
         txt = response.text.strip()
+        
+        # Nettoyage Markdown si l'IA en met quand même
         if txt.startswith("```json"): txt = txt.split("```json")[1]
-        if txt.startswith("```"): txt = txt.split("```")[1]
+        elif txt.startswith("```"): txt = txt.split("```")[1]
         if txt.endswith("```"): txt = txt[:-3]
+        
+        txt = txt.strip()
+        
+        # Tentative de chargement JSON
         data = json.loads(txt)
-        return pd.DataFrame(data)
+        
+        # Si l'IA renvoie un dict {"data": [...]}, on prend la liste
+        if isinstance(data, dict):
+            if "data" in data: data = data["data"]
+            elif "result" in data: data = data["result"]
+            else: data = [data] # Cas rare d'un seul objet
+
+        return pd.DataFrame(data), txt
+
     except Exception as e:
         st.error(f"Erreur analyse IA : {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), str(e)
 
 def remove_accents(input_str):
     if not isinstance(input_str, str): return str(input_str)
@@ -298,6 +320,7 @@ if 'page' not in st.session_state: st.session_state.page = "Accueil"
 if 'relecture' not in st.session_state: st.session_state.relecture = None
 if 'termes_inconnus' not in st.session_state: st.session_state.termes_inconnus = []
 if 'is_admin' not in st.session_state: st.session_state.is_admin = False
+if 'raw_debug' not in st.session_state: st.session_state.raw_debug = ""
 
 # --- BARRE LATERALE (CONNEXION ADMIN) ---
 with st.sidebar:
@@ -368,6 +391,7 @@ else:
             st.session_state.page = "Accueil"
             st.session_state.relecture = None
             st.session_state.termes_inconnus = []
+            st.session_state.raw_debug = ""
             st.rerun()
 
     path_f = f"{BASE_DIR}/{nom_c}/{nom_c}.xlsx"
@@ -536,33 +560,45 @@ else:
             if up_b and st.session_state.relecture is None:
                 if st.button("Envoyer Bon", key="btn_b", type="primary"):
                     with st.spinner("IA en cours..."):
-                        res = analyser_ia(up_b, GOOGLE_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
+                        res, raw_debug = analyser_ia(up_b, GOOGLE_API_KEY, f"Donnees beton JSON. Colonnes: {COLS_BETON}")
+                        st.session_state.raw_debug = raw_debug # Stockage pour debug
                         
-                        # --- BLOC DE NETTOYAGE ROBUSTE ET ORDRE MODIFIÉ ---
-                        # 1. On s'assure d'abord d'avoir toutes les colonnes requises
-                        cols_temp = ["Doute"] + COLS_BETON
+                        # --- BLOC DE NETTOYAGE ET CONVERSION ---
+                        if not res.empty:
+                            # 1. Conversion des colonnes TEXTE (str) pour éviter l'erreur FLOAT
+                            for col in ["Fournisseur", "Designation", "Type de Beton"]:
+                                if col in res.columns:
+                                    res[col] = res[col].fillna("").astype(str).replace('nan', '')
+                                else:
+                                    res[col] = "" # Force creation si manquant
+                            
+                            # 2. Conversion des colonnes NUMERIQUES (float)
+                            if "Volume (m3)" in res.columns:
+                                res["Volume (m3)"] = pd.to_numeric(res["Volume (m3)"], errors='coerce').fillna(0.0).astype(float)
+                            else:
+                                res["Volume (m3)"] = 0.0
+                            
+                            # 3. Colonne Doute
+                            if "Doute" not in res.columns:
+                                res["Doute"] = False
+                            else:
+                                res["Doute"] = res["Doute"].astype(bool)
+
+                        cols_temp = ["Doute"] + COLS_BETON 
                         res = res.reindex(columns=cols_temp)
-
-                        # 2. Conversion explicite en TEXTE (str) pour éviter les "float" (NaN)
-                        for col in ["Fournisseur", "Designation", "Type de Beton"]:
-                            res[col] = res[col].fillna("").astype(str).replace("nan", "")
-                        
-                        # 3. Conversion explicite en NOMBRE (float)
-                        if "Volume (m3)" in res.columns:
-                            res["Volume (m3)"] = pd.to_numeric(res["Volume (m3)"], errors='coerce').fillna(0.0)
-                        
-                        # 4. Conversion explicite en BOOLEAN
-                        res["Doute"] = res["Doute"].fillna(False).astype(bool)
-
-                        # 5. Corrections métier (lettres qui traînent etc.)
                         res = appliquer_correction_u(res, ["Designation", "Type de Beton"])
                         res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
-                        
                         st.session_state.termes_inconnus = inconnus
                         st.session_state.relecture = res
                         st.rerun()
-                        
-            if st.session_state.relecture is not None:
+            
+            # Message si c'est vide (DEBUG)
+            if st.session_state.relecture is not None and st.session_state.relecture.empty:
+                st.warning("L'IA n'a retourné aucune donnée. Vérifiez le format JSON ci-dessous.")
+                with st.expander("🔍 Voir réponse brute de l'IA (Debug)"):
+                    st.code(st.session_state.raw_debug)
+
+            if st.session_state.relecture is not None and not st.session_state.relecture.empty:
                 if st.session_state.termes_inconnus:
                     st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
                 else:
@@ -601,33 +637,44 @@ else:
             if up_a and st.session_state.relecture is None:
                 if st.button("Envoyer Bon", key="btn_a", type="primary"):
                     with st.spinner("IA en cours..."):
-                        res = analyser_ia(up_a, GOOGLE_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
+                        res, raw_debug = analyser_ia(up_a, GOOGLE_API_KEY, f"Donnees acier JSON. Colonnes: {COLS_ACIER}")
+                        st.session_state.raw_debug = raw_debug
                         
-                        # --- BLOC DE NETTOYAGE ROBUSTE ET ORDRE MODIFIÉ ---
-                        # 1. Structure
+                        # --- BLOC DE NETTOYAGE ET CONVERSION ---
+                        if not res.empty:
+                            # 1. Conversion des colonnes TEXTE (str)
+                            for col in ["Fournisseur", "Designation", "Type d Acier"]:
+                                if col in res.columns:
+                                    res[col] = res[col].fillna("").astype(str).replace('nan', '')
+                                else:
+                                    res[col] = ""
+                            
+                            # 2. Conversion des colonnes NUMERIQUES (float)
+                            if "Poids (kg)" in res.columns:
+                                res["Poids (kg)"] = pd.to_numeric(res["Poids (kg)"], errors='coerce').fillna(0.0).astype(float)
+                            else:
+                                res["Poids (kg)"] = 0.0
+
+                            # 3. Colonne Doute
+                            if "Doute" not in res.columns:
+                                res["Doute"] = False
+                            else:
+                                res["Doute"] = res["Doute"].astype(bool)
+
                         cols_temp = ["Doute"] + COLS_ACIER
                         res = res.reindex(columns=cols_temp)
-                        
-                        # 2. Texte (string pur)
-                        for col in ["Fournisseur", "Designation", "Type d Acier"]:
-                            res[col] = res[col].fillna("").astype(str).replace("nan", "")
-                        
-                        # 3. Nombre
-                        if "Poids (kg)" in res.columns:
-                            res["Poids (kg)"] = pd.to_numeric(res["Poids (kg)"], errors='coerce').fillna(0.0)
-                        
-                        # 4. Bool
-                        res["Doute"] = res["Doute"].fillna(False).astype(bool)
-
-                        # 5. Métier
                         res = appliquer_correction_u(res, ["Designation"])
                         res, inconnus = verifier_correspondance_budget(res, df_prev, col_scan="Designation")
-                        
                         st.session_state.termes_inconnus = inconnus
                         st.session_state.relecture = res
                         st.rerun()
 
-            if st.session_state.relecture is not None:
+            if st.session_state.relecture is not None and st.session_state.relecture.empty:
+                 st.warning("L'IA n'a retourné aucune donnée. Vérifiez le format JSON ci-dessous.")
+                 with st.expander("🔍 Voir réponse brute de l'IA (Debug)"):
+                    st.code(st.session_state.raw_debug)
+
+            if st.session_state.relecture is not None and not st.session_state.relecture.empty:
                 if st.session_state.termes_inconnus:
                     st.warning(f"⚠️ Termes inconnus détectés : {', '.join(set(st.session_state.termes_inconnus))}. Veuillez corriger les lignes cochées.")
                 else:
