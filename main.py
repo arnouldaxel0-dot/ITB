@@ -13,7 +13,7 @@ from fpdf import FPDF
 import xlsxwriter
 import google.generativeai as genai
 
-# --- 1. CONFIGURATION GITHUB ET OPENAI (Via Secrets) ---
+# --- 1. CONFIGURATION GITHUB ET GOOGLE (Via Secrets) ---
 try:
     GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
     REPO_NAME = st.secrets.get("REPO_NAME", "")
@@ -61,45 +61,29 @@ STANDARD_ITEMS = [
 
 st.set_page_config(page_title="Suivi béton", layout="wide")
 
-# --- AJOUT CSS GLOBAL (COULEURS & MOBILE) ---
+# --- AJOUT CSS GLOBAL (THEME SOMBRE) ---
 st.markdown("""
 <style>
-    /* 1. Fond du site */
+    /* 1. Fond du site en mode sombre */
     .stApp {
-        background-color: #FFEBD1;
+        background-color: #0E1117;
+        color: #FAFAFA;
     }
     
-    /* 2. Textes en gras, Titres (h1, h2, h3) */
-    h1, h2, h3, h4, h5, h6, strong, b {
-        color: #001724 !important;
-    }
-    
-    /* 3. Boutons (Primaires et Secondaires) */
-    div.stButton > button {
-        background-color: #FF7A00 !important;
-        color: white !important;
-        border: none !important;
-    }
-    div.stButton > button:hover {
-        background-color: #E66A00 !important;
-        color: white !important;
-    }
-    
-    /* 4. Onglets (Tabs) */
-    .stTabs [data-baseweb="tab"] {
-        color: #001724; 
-    }
-    .stTabs [data-baseweb="tab-highlight"] {
-        background-color: #15676D !important;
-    }
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        color: #15676D !important;
-        font-weight: bold;
+    /* 2. Titre Principal en Orange (GESTION ITB77) */
+    h1 {
+        color: #E67E22 !important;
+        text-align: center;
     }
 
-    /* 5. Sidebar (Optionnel pour harmoniser) */
+    /* 3. Autres titres et textes gras en blanc/gris clair */
+    h2, h3, h4, h5, h6, strong, b {
+        color: #FAFAFA !important;
+    }
+    
+    /* 4. Sidebar en gris foncé */
     [data-testid="stSidebar"] {
-        background-color: #FFF5E6; 
+        background-color: #262730;
     }
 
     /* Gestion Mobile */
@@ -293,7 +277,9 @@ def generer_pdf_recap(df_target, nom_chantier):
                 prev = row['Prevu (m3)']
                 reel = row['Volume Reel']
                 etude = row.get('Etude (m3)', 0.0)
+                
                 delta = prev - reel 
+                
                 pct = (reel / prev * 100) if prev > 0 else 0.0
                 pdf.cell(50, 8, nom, 1)
                 pdf.cell(30, 8, f"{prev:.1f}", 1, 0, 'C')
@@ -317,6 +303,9 @@ if 'is_admin' not in st.session_state: st.session_state.is_admin = False
 
 # --- BARRE LATERALE (CONNEXION ADMIN) ---
 with st.sidebar:
+    # URL CORRIGÉE (Plus de Markdown invalide ici)
+    st.image("[https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png](https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python_logo_notext.svg/110px-Python_logo_notext.svg.png)", width=50) 
+    
     st.write("### Menu")
     with st.expander("🔐 Administration"):
         pwd_input = st.text_input("Mot de passe", type="password", key="admin_pwd")
@@ -330,7 +319,7 @@ with st.sidebar:
         else:
             st.session_state.is_admin = False
 
-st.markdown('<h1 style="color:#FF7A00; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
+st.markdown('<h1 style="color:#E67E22; text-align:center;">GESTION ITB77</h1>', unsafe_allow_html=True)
 
 if st.session_state.page == "Accueil":
     col_titre, col_suivi, col_refresh = st.columns([6, 2, 2])
